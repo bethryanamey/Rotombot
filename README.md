@@ -6,7 +6,7 @@ The aim of Rotombot is to explore the functionality of an "automatic analysis as
 
 Here is a high level diagram of the process followed in order to generate outputs:
 
-![alt text](C:\Users\Beth\Documents\Python Scripts\Be Digital\Business MI Dashboards\Rotombot\Rotombot\README assets\proof of concept architecture.png "Process for generating output")
+![image info](./README assets/proof of concept architecture.png "Process for generating output")
 
 # Usage
 ## Data Summarisation or Table
