@@ -44,6 +44,11 @@ Table: fruit_transactions
 Columns: TransactionID (smallint, primary key), OrderID (smallint), Customer (nvarchar(100), FruitID (tinyint, foreign key references fruit_prices(FruitID)), Quantity_Pounds (int)
 """
 
+# data = """
+# Table: processed_flooding_data
+# Columns: Occurred (date at which event occurred, datetime2), distance_to_nearest_station (how the close the event was to a weather station, float), proximity_to_river (how close the event was to a river, float), proximity_to_coast (how close the event was to a river, float), rain_day (amount of rainfall in the day, float), rain_month (amount of rainfall in a month, float), rain_15mins (amount of rainfall in the last 15 minutes, float), flood_class (classification determining whether there was a flood or not, tinyint), year (int), month (int), hour (int)
+# """
+
 # reset conversation
 def on_btn_click(graph_df, data_df, what_do_they_want, profanity=False):
     """
@@ -379,7 +384,6 @@ def automate_visualisation(
         visualisation_description: str, 
         customisation_options: str = None, 
         plot_save_name: str = "temp_plot", 
-        show_sql: bool = False, 
         previous_python_messages: list = None,
         previous_python_result: str = None,
         visual_changes: str = None
@@ -398,23 +402,9 @@ def automate_visualisation(
     # if this is not the first time calling this function, the data string will be in the previous python messages so we don't need to get data again
     # if it is, we need to generate the data we want to visualise and generate the system of messages to send to OpenAI with our visualisation request
     if not previous_python_messages:
-            # create SQL query for retrieving data
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt="### SQL Server SQL tables, with their properties:##{}#### A T-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, data_required),
-            temperature=0,
-            max_tokens=150,
-            top_p=1.0,
-            frequency_penalty=0.0,
-            presence_penalty=0.0,
-            stop=["#", ";"]
-        )
-        # extract query from response
-        SQL_query = str(response["choices"][0]["text"])
-        if show_sql:
-            print(SQL_query)
-        # run query on sql server database
-        sql_query_result = pd.read_sql(SQL_query, cnxn)
+        # create SQL query for retrieving data
+        #TODO: alter code so that if user isn't happy with the data, they can request a change
+        SQL_query, sql_query_result, sql_messages = automate_summarisation(data_required, data_for_graph=True)
 
         # save result locally and as string as variable
         sql_query_result.to_csv("temp_data.csv", index=False)
@@ -422,7 +412,7 @@ def automate_visualisation(
         data_string = sql_query_result.head(10).to_csv(index=False)
 
         # final visual query
-        visual_query = "{}. Please include any necessary imports. Don't include any additional text other than the python script. Assume the data is saved in a csv called temp_data.csv. Make sure the code saves the plot as {}, but it does not need to display the plot (i.e. no plt.show()). Use xkcd sktch-style drawing mode".format(visualisation_description, plot_save_name)
+        visual_query = "{}. Please include any necessary imports. Don't include any additional text other than the python script. Assume the data is saved in a csv called temp_data.csv. Make sure the code saves the plot as {}, but it does not need to display the plot (i.e. no plt.show()).".format(visualisation_description, plot_save_name) #Use xkcd sktch-style drawing mode
         if customisation_options != "no":
             visual_query += " Please can you also {}".format(customisation_options)
 
@@ -501,33 +491,80 @@ def automate_visualisation(
 
     return SQL_query, plotting_code, messages, response["choices"][0]["message"]["content"]
 
-def automate_summarisation(summarisation_description: str):
+def automate_summarisation(summarisation_description: str, data_for_graph: bool = False):
         """
         Use plain english texts to automatically create data summarisations
             summarisation_description: str, description of the summarisation the uesr would like to create
         """
 
-        # create SQL query for retrieving data
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt="### SQL Server tables, with their properties:\n#\n#{}\n#\n### A Transact-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, summarisation_description),
-            temperature=0,
-            max_tokens=150,
-            top_p=1.0,
-            frequency_penalty=0.0,
-            presence_penalty=0.0,
-            stop=["#", ";"]
-        )
-        # extract query from response
-        SQL_query = str(response["choices"][0]["text"])
-        # run query on sql server database
-        sql_query_result = pd.read_sql(SQL_query, cnxn)
+        # # create SQL query for retrieving data
+        # response = openai.Completion.create(
+        #     model="text-davinci-003",
+        #     prompt="### SQL Server tables, with their properties:\n#\n#{}\n#\n### A Transact-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, summarisation_description),
+        #     temperature=0,
+        #     max_tokens=150,
+        #     top_p=1.0,
+        #     frequency_penalty=0.0,
+        #     presence_penalty=0.0,
+        #     stop=["#", ";"]
+        # )
+
+        # # extract query from response
+        # SQL_query = str(response["choices"][0]["text"])
+
+        # Alternative model for generating SQL queries        
+        messages = [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Here is a description of the tables within my SQL Server database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, summarisation_description)},
+                ]
+        working = False
+        i = 0
+        while not working:
+
+            model = "gpt-4"
+            n_tokens = num_tokens_from_messages(messages)
+            if n_tokens > 16384:
+                e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
+                raise Exception(e)
+            
+            # send request to OpenAI for python code to plot visual
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=messages
+            )
+            gpt_response = response["choices"][0]["message"]["content"]
+            if "```sql" in gpt_response:
+                SQL_query = gpt_response.split("```sql")[1].split("```")[0]
+            elif "```SQL" in gpt_response:
+                SQL_query = gpt_response.split("```SQL")[1].split("```")[0]
+            else:
+                SQL_query = gpt_response.split("```")[1].split("```")[0]
+
+            # run query on sql server database
+            try:
+                sql_query_result = pd.read_sql(SQL_query, cnxn)
+                working = True
+            # query didn't run
+            except Exception as e:
+                i += 1
+                # if we have failed 3 times:
+                if i == 2:
+                    raise Exception(e)
+                print("Code didn't work: {}".format(e))
+                # ask gpt to fix it
+                gpt_response_message = {"role": "assistant", "content":gpt_response}
+                messages.append(gpt_response_message)
+                new_message = {"role": "user", "content":f"This code didn't work. I got this error message: {e}. Please can you try again."}
+                messages.append(new_message)
+                time.sleep(3)
 
         return_type = 3
+        if data_for_graph:
+            return SQL_query, sql_query_result, messages
 
         # if result only has one row, assume they have asked for an aggregation/looking for a particular object
         # ask ChatGPT if they can phrase the answer in a sentence
-        messages = None
+        #messages = None
         if len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
             result_csv = sql_query_result.to_csv(index=False)
 

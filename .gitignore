@@ -1,3 +1,6 @@
 hidden_variables.py
 __pycache__/hidden_variables.cpython-311.pyc
 __pycache__/variables.cpython-311.pyc
+temp_data.csv
+anonymous.sqlite3/
+
