@@ -7,7 +7,9 @@ matching_phrases = {
     'data': [r'.*table.*', r'.*summarisation.*', r'.*aggregate.*'],
     'rotom': [r'.*[learn|know].*about rotom.*'],
     # show me the code please, how was this summarisation made, what code was used to make this
-    'code': [r'.*show.*code*', r'.*how.*made*', r'.*what.*code*']
+    'code': [r'.*show.*code*', r'.*how.*made*', r'.*what.*code*'],
+    # this didn't work, this didnt work, there was a problem, this isnt right, this isn't right, this is not right
+    'problem': [r".*did(n'?| no)t.*work*", r'.*problem.*', r".*(isn'?t|is not).*right*"]
 }
 negative_responses = ["nothing", "don't", "stop", "sorry"]
 exit_commands = ["quit", "pause", "exit", "goodbye", "bye", "later", "stop"]
@@ -47,5 +49,8 @@ data_df = pd.DataFrame([
     [1, 'user_request',"Please describe the data table/summarisation you would like to create\n", False, None],
     [2, 'SQL_query', None, False, None],
     [2, 'messages', None, False, None],
-    [2, 'result', None, False, None]
+    [2, 'result', None, False, None],
+    [3, "previous_messages", None, False, None],
+    [3, "previous_response", None, False, None],
+    [4, "data_changes", "What would you like to change about the data?", False, None],
 ], columns=["stage", "variable", "prompt", "completed", "input"])

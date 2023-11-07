@@ -287,6 +287,7 @@ def generate_response(input_text, what_do_they_want, graph_df, data_df):
         # want to make a data summarisation
         elif what_do_they_want == "data":
 
+
             # user no longer wants to make a data summarisation
             if match_reply(input_text, vr.matching_phrases) == 'graph':
                 # update what they want
@@ -305,12 +306,19 @@ def generate_response(input_text, what_do_they_want, graph_df, data_df):
                 data_df.loc[data_df.variable == "user_request", "completed"] = True
 
             # user has made previous request, result has been generated and they want to see how
-            elif match_reply(input_text, vr.matching_phrases) == 'code' and all(data_df["completed"] == True):
+            elif match_reply(input_text, vr.matching_phrases) == 'code' and all(data_df[data_df.stage == 2]["completed"] == True):
                 SQL_query = data_df[data_df.variable == "SQL_query"]["input"].iloc[0]
                 response = "Here is the SQL Query used to generate the result:\n{}".format(SQL_query)
 
+            # user has made previous request, result has been generated and they are not happy with it
+            elif match_reply(input_text, vr.matching_phrases) == 'problem' and all(data_df[data_df.stage == 2]["completed"] == True):
+                # save previous request
+                data_df.loc[data_df.variable == "previous_messages", "input"] = data_df[data_df.variable == "messages"]["input"].iloc[0]
+                data_df.loc[data_df.variable == "previous_response", "input"] = data_df[data_df.variable == "SQL_query"]["input"].iloc[0]
+                response, data_df = retrieve_next_prompt_from_df(data_df, 4)
+
             # user wants to use generated table to create a graph
-            elif match_reply(input_text, vr.matching_phrases) == 'visualise' and all(data_df["completed"] == True):
+            elif match_reply(input_text, vr.matching_phrases) == 'visualise' and all(data_df[data_df.stage == 2]["completed"] == True):
                 # reset conversation caches                
                 graph_df.loc[:, "completed"] = False
                 graph_df.loc[:, "input"] = None
@@ -325,8 +333,22 @@ def generate_response(input_text, what_do_they_want, graph_df, data_df):
 
             # assume any other input is a new query to send to OpenAI
             else:
-                data_df.loc[data_df.variable == "user_request", "input"] = input_text
-                SQL_query, result, messages, return_type = automate_summarisation(input_text)
+                # user has requested a change
+                if data_df[data_df.variable == "data_changes"]["completed"].iloc[0] == True:
+                    data_df.loc[data_df.variable == "data_changes", "input"] = input_text
+                    initial_request = data_df[data_df.variable == "user_request"]["input"].iloc[0]
+                    previous_messages = ast.literal_eval(data_df[data_df.variable == "previous_messages"]["input"].iloc[0])
+                    previous_response = data_df[data_df.variable == "previous_response"]["input"].iloc[0]
+                    SQL_query, result, messages, return_type = automate_summarisation(initial_request, previous_sql_messages=previous_messages, previous_sql_result=previous_response, data_changes=input_text)
+                    # add data changes to user_request
+                    data_df.loc[data_df.variable == "user_request", "input"] = data_df.loc[data_df.variable == "user_request"]["input"].iloc[0] + " " + data_df.loc[data_df.variable == "data_changes"]["input"].iloc[0]
+                    # reset data changes
+                    data_df.loc[data_df.variable == "data_changes", "input"] = None
+                    data_df.loc[data_df.variable == "data_changes", "completed"] = False
+                else:
+                    data_df.loc[data_df.variable == "user_request", "input"] = input_text
+                    SQL_query, result, messages, return_type = automate_summarisation(input_text)
+
                 # save results
                 data_df.loc[data_df.variable == "SQL_query", "input"] = SQL_query
                 data_df.loc[data_df.variable == "messages", "input"] = str(messages)
@@ -451,15 +473,13 @@ def automate_visualisation(
             messages=messages
         )
         # extract plotting code from openAI
-        # todo: query has been altered so that it doesn't include any additional text - check this has worked so this won't be needed
         plotting_code = response["choices"][0]["message"]["content"]
         if "```python" in plotting_code:
             plotting_code = plotting_code.split("```python")[1].split("```")[0]
         else:
             plotting_code = plotting_code.split("```")[1].split("```")[0]
 
-        # save code locally so that it can be executed
-        # todo: again, is there somewhere else this should be saved? 
+        # save code locally so that it can be executed 
         with open("plotter.py", "w", encoding="utf-8") as f:
             f.write(plotting_code)
             f.close()
@@ -480,126 +500,128 @@ def automate_visualisation(
     if working == False:
         return -1, None, None, None  
 
-    # todo: currently shows image but this may not be needed (just needs to be sent back to frontend)
-    # img = cv2.imread(plot_save_name)
-    # cv2.imshow("OpenAI Plot", img)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-
     # delete code
     os.remove("plotter.py")
 
     return SQL_query, plotting_code, messages, response["choices"][0]["message"]["content"]
 
-def automate_summarisation(summarisation_description: str, data_for_graph: bool = False):
-        """
-        Use plain english texts to automatically create data summarisations
-            summarisation_description: str, description of the summarisation the uesr would like to create
-        """
+def automate_summarisation(summarisation_description: str, data_for_graph: bool = False,
+        previous_sql_messages: list = None,
+        previous_sql_result: str = None,
+        data_changes: str = None):
+    """
+    Use plain english texts to automatically create data summarisations
+        summarisation_description: str, description of the summarisation the uesr would like to create
+    """
 
-        # # create SQL query for retrieving data
-        # response = openai.Completion.create(
-        #     model="text-davinci-003",
-        #     prompt="### SQL Server tables, with their properties:\n#\n#{}\n#\n### A Transact-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, summarisation_description),
-        #     temperature=0,
-        #     max_tokens=150,
-        #     top_p=1.0,
-        #     frequency_penalty=0.0,
-        #     presence_penalty=0.0,
-        #     stop=["#", ";"]
-        # )
-
-        # # extract query from response
-        # SQL_query = str(response["choices"][0]["text"])
-
-        # Alternative model for generating SQL queries        
+    # if this is not the first time calling this function, there will be previous_sql_messages to improve upon 
+    if not previous_sql_messages:     
         messages = [
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "Here is a description of the tables within my SQL Server database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, summarisation_description)},
+                    {"role": "user", "content": "Here is a description of the tables within my SQL Server database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Don't use the word LIMIT and only include the SQL query in your response.}}".format(data, summarisation_description)},
                 ]
-        working = False
-        i = 0
-        while not working:
+        
+    # otherwise, function has been called before and we want to make improvements
+    else:
+        messages = previous_sql_messages
+        previous_assistant_content = {"role": "assistant", "content":previous_sql_result}
+        messages.append(previous_assistant_content)
+        next_message = {"role": "user", "content":"This isn't quite what I need. Please can you change something in the SQL query: {}.".format(data_changes)}
+        messages.append(next_message)   
+    
+    working = False
+    i = 0
+    while not working:
 
-            model = "gpt-4"
-            n_tokens = num_tokens_from_messages(messages)
-            if n_tokens > 16384:
-                e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
+        model = "gpt-4"
+        n_tokens = num_tokens_from_messages(messages)
+        if n_tokens > 16384:
+            e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
+            raise Exception(e)
+        
+        # send request to OpenAI for python code to plot visual
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages
+        )
+        gpt_response = response["choices"][0]["message"]["content"]
+        print(gpt_response)
+        if "```sql" in gpt_response:
+            SQL_query = gpt_response.split("```sql")[1].split("```")[0]
+        elif "```SQL" in gpt_response:
+            SQL_query = gpt_response.split("```SQL")[1].split("```")[0]
+        elif "```" in gpt_response:
+            SQL_query = gpt_response.split("```")[1].split("```")[0]
+        else:
+            SQL_query = gpt_response
+
+        # run query on sql server database
+        try:
+            sql_query_result = pd.read_sql(SQL_query, cnxn)
+            working = True
+        # query didn't run
+        except Exception as e:
+            i += 1
+            # if we have failed 3 times:
+            if i == 2:
                 raise Exception(e)
-            
-            # send request to OpenAI for python code to plot visual
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=messages
-            )
-            gpt_response = response["choices"][0]["message"]["content"]
-            if "```sql" in gpt_response:
-                SQL_query = gpt_response.split("```sql")[1].split("```")[0]
-            elif "```SQL" in gpt_response:
-                SQL_query = gpt_response.split("```SQL")[1].split("```")[0]
-            else:
-                SQL_query = gpt_response.split("```")[1].split("```")[0]
+            print("Code didn't work: {}".format(e))
+            # ask gpt to fix it
+            gpt_response_message = {"role": "assistant", "content":gpt_response}
+            messages.append(gpt_response_message)
+            new_message = {"role": "user", "content":f"This code didn't work. I got this error message: {e}. Please can you try again."}
+            messages.append(new_message)
+            time.sleep(3)
 
-            # run query on sql server database
-            try:
-                sql_query_result = pd.read_sql(SQL_query, cnxn)
-                working = True
-            # query didn't run
-            except Exception as e:
-                i += 1
-                # if we have failed 3 times:
-                if i == 2:
-                    raise Exception(e)
-                print("Code didn't work: {}".format(e))
-                # ask gpt to fix it
-                gpt_response_message = {"role": "assistant", "content":gpt_response}
-                messages.append(gpt_response_message)
-                new_message = {"role": "user", "content":f"This code didn't work. I got this error message: {e}. Please can you try again."}
-                messages.append(new_message)
-                time.sleep(3)
+    return_type = 3
+    if data_for_graph:
+        return SQL_query, sql_query_result, messages
 
-        return_type = 3
-        if data_for_graph:
-            return SQL_query, sql_query_result, messages
+    # if result only has one row, assume they have asked for an aggregation/looking for a particular object
+    # ask ChatGPT if they can phrase the answer in a sentence
+    #messages = None
+    if len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
+        result_csv = sql_query_result.to_csv(index=False)
 
-        # if result only has one row, assume they have asked for an aggregation/looking for a particular object
-        # ask ChatGPT if they can phrase the answer in a sentence
-        #messages = None
-        if len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
-            result_csv = sql_query_result.to_csv(index=False)
+        # if data_changes:
+        #     user_question = summarisation_description + " " + data_changes
+        # else:
+        #     user_question = summarisation_description
 
-            # write result into a sentence
-            messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "I need help writing a sentence. A customer asked me a data question and this is the data I found. Please could you work this into a sentence so that I can respond to them? Only respond with what I should send to the client and please match the language that they made their request in."},
-                    {"role": "assistant", "content": "Certainly! Please provide me with the specific data question and the corresponding result, and I'll be happy to help you craft a response sentence."},
-                    {"role": "user", "content": "The customer asked 'How tall is Mewtwo' and the answer I got is Height_m\n2 (in CSV format)"},
-                    {"role": "assistant", "content": "Mewtwo is 2 metres tall."},
-                    {"role": "user", "content": "This is perfect! Thank you. Can you do it again for another question?"},
-                    {"role": "assistant", "content": "Of course! I'm here to help. Please provide me with the new data question and the corresponding result, and I'll assist you in constructing a response sentence."},
-                    {"role": "user", "content": "The customer asked '{}' and the answer I got is {} (in CSV format)".format(summarisation_description, result_csv)}
-                ]
+        user_question = summarisation_description
 
-            model = "gpt-3.5-turbo"
-            n_tokens = num_tokens_from_messages(messages)
-            if n_tokens > 4096:
-                e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
-                raise Exception(e)
-            
-            # send request to OpenAI for python code to plot visual
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=messages
-            )
-            # extract plotting code from openAI
-            answer_in_a_sentence = response["choices"][0]["message"]["content"]
+        # write result into a sentence
+        sentence_messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "I need help writing a sentence. A customer asked me a data question and this is the data I found. Please could you work this into a sentence so that I can respond to them? Only respond with what I should send to the client and please match the language that they made their request in."},
+                {"role": "assistant", "content": "Certainly! Please provide me with the specific data question and the corresponding result, and I'll be happy to help you craft a response sentence."},
+                {"role": "user", "content": "The customer asked 'How tall is Mewtwo' and the answer I got is Height_m\n2 (in CSV format)"},
+                {"role": "assistant", "content": "Mewtwo is 2 metres tall."},
+                {"role": "user", "content": "This is perfect! Thank you. Can you do it again for another question?"},
+                {"role": "assistant", "content": "Of course! I'm here to help. Please provide me with the new data question and the corresponding result, and I'll assist you in constructing a response sentence."},
+                {"role": "user", "content": "The customer asked '{}' and the answer I got is {} (in CSV format)".format(user_question, result_csv)}
+            ]
 
-            return_type = 0
+        model = "gpt-3.5-turbo"
+        n_tokens = num_tokens_from_messages(sentence_messages)
+        if n_tokens > 4096:
+            e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
+            raise Exception(e)
+        
+        # send request to OpenAI for python code to plot visual
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=sentence_messages
+        )
+        # extract plotting code from openAI
+        answer_in_a_sentence = response["choices"][0]["message"]["content"]
 
-            return SQL_query, answer_in_a_sentence, messages, return_type
+        return_type = 0
 
-        # if result was more than one row, just return table produced from query
-        return SQL_query, sql_query_result, messages, return_type
+        return SQL_query, answer_in_a_sentence, messages, return_type
+
+    # if result was more than one row, just return table produced from query
+    return SQL_query, sql_query_result, messages, return_type
 
 ## page design
 

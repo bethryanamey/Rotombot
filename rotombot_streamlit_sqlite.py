@@ -1,4 +1,5 @@
 #TODOs in this document
+#TODO: create way to easily export results: user queries, result, and generated code
 
 import warnings
 warnings.simplefilter(action='ignore', category=UserWarning)
