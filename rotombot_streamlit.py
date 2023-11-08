@@ -381,7 +381,7 @@ def generate_custom_response_based_on_convo(input_text: str, what_do_they_want: 
 
     # want to make a data summarisation
     elif what_do_they_want == "data":
-        response, what_do_they_want, data_df, graph_df, return_type = handle_data_conversation(input_text, data_df)
+        response, what_do_they_want, data_df, graph_df, return_type = handle_data_conversation(input_text, data_df, graph_df)
 
     else:
         response = "Something went wrong. Please try again."

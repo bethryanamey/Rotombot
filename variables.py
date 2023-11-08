@@ -44,6 +44,7 @@ graph_df = pd.DataFrame([
     [6, "visual_changes", "What would you like to see different in the graph? Write a prompt to add to your initial input. Enter nothing if you want the program to try again with the previous prompts", False, None]
 ], columns=["stage", "variable", "prompt", "completed", "input"])
 
+#TODO: use dict instead of df
 graph_dict = {
     1:{
         "stage":1, 
