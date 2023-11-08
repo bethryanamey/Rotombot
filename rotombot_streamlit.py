@@ -111,6 +111,8 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
     """
     # intialise variable (this will become None if we are finished with making a graph)
     what_do_they_want = 'graph'
+    # this will only change if we create an image, code, or break
+    return_type = 0
 
     # we know nothing about what the user wants
     if all(graph_df["completed"] == False):
@@ -160,7 +162,9 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
                                                             visual_changes=visual_changes)
 
         # save results
-        graph_df.loc[graph_df.variable == "SQL_query", "input"] = SQL_query
+        # if only a graph change, no new SQL query will have been made (SQL_query = None) so don't change the old one 
+        if SQL_query:
+            graph_df.loc[graph_df.variable == "SQL_query", "input"] = SQL_query
         graph_df.loc[graph_df.variable == "plotting_code", "input"] = plotting_code
         graph_df.loc[graph_df.variable == "messages", "input"] = str(messages)
         graph_df.loc[graph_df.variable == "gpt_response", "input"] = gpt_response
@@ -264,13 +268,19 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
 
     return response, what_do_they_want, graph_df, return_type
 
-def handle_data_conversation(input_text: str, data_df: pd.DataFrame):    
+def handle_data_conversation(input_text: str, data_df: pd.DataFrame, graph_df: pd.DataFrame):    
     """
     Use updates in the data_df to understand progression of conversation and help with performing analysis.
     Everytime the user inputs text, the entire python script reruns. Therefore, the conversation is cached and needs to be checked with every message. 
         input_text: str, text inputted by the user
-        data_df: pd.DataFrame, table containing conversation information, prompts, and whether a step has been completed (cached conversation)
+        data_df: pd.DataFrame, table containing conversation information, prompts, and whether a step has been completed in the data conversation (cached conversation)
+        graph_df: pd.DataFrame, table containing conversation information, prompts, and whether a step has been completed in the graph conversation (cached conversation)
     """
+    # intialise variable
+    what_do_they_want = "data"
+    # this will only change if we create an image, code, or break
+    return_type = 0
+
     # user no longer wants to make a data summarisation
     if match_reply(input_text, vr.matching_phrases) == 'graph':
         # update what they want
@@ -340,7 +350,43 @@ def handle_data_conversation(input_text: str, data_df: pd.DataFrame):
         # output result
         response = result
 
-    return response, what_do_they_want, data_df, return_type
+    return response, what_do_they_want, data_df, graph_df, return_type
+
+def generate_custom_response_based_on_convo(input_text: str, what_do_they_want: str, graph_df: pd.DataFrame, data_df: pd.DataFrame):
+    """
+    Based on progress in conversation (what_do_they_want), decide what is needed and execute function for generating necessary responses
+        input_text: str, text inputted by the user
+        what_do_they_want: str, text detailing what the user has requested, cached to enable conversations to continue with every script run
+        graph_df: pd.DataFrame, table containing conversation information, prompts, and whether a step has been completed in the graph conversation (cached conversation)
+        data_df: pd.DataFrame, table containing conversation information, prompts, and whether a step has been completed in the data conversation (cached conversation)
+    """
+
+    # this will only change if we create an image, code, or break
+    return_type = 0
+
+    # we need to figure out what we're helping them with
+    if what_do_they_want is None:
+        what_do_they_want = match_reply(input_text, vr.matching_phrases)
+
+    # if we didn't manage to match what they wanted to a functionality, ask them again
+    if what_do_they_want is None:
+        response = "I did not understand you. Can you please rephrase your input?"
+    
+    elif what_do_they_want == 'rotom':
+        what_do_they_want = None
+        response = "Rotom is a small, orange Pokémon that has a body of plasma. Its electric-like body can enter some kinds of machines and take control in order to make mischief. As a Pokédex, Rotom has access to data about many different Pokémon species. It was the inspiration for this tool as it was originally only able to analyse Pokémon data!\nWould you like to produce a graph or a data table/summarisation?"
+
+    elif what_do_they_want == "graph":
+        response, what_do_they_want, graph_df, return_type = handle_graph_generation(input_text, graph_df)
+
+    # want to make a data summarisation
+    elif what_do_they_want == "data":
+        response, what_do_they_want, data_df, graph_df, return_type = handle_data_conversation(input_text, data_df)
+
+    else:
+        response = "Something went wrong. Please try again."
+
+    return response, what_do_they_want, graph_df, data_df, return_type
 
 def generate_response(input_text, what_do_they_want, graph_df, data_df):
 
@@ -363,27 +409,7 @@ def generate_response(input_text, what_do_they_want, graph_df, data_df):
 
     # don't end conversation, pursue
     else:
-        # we need to figure out what we're helping them with
-        if what_do_they_want is None:
-            what_do_they_want = match_reply(input_text, vr.matching_phrases)
-
-        # if we didn't manage to match what they wanted to a functionality, ask them again
-        if what_do_they_want is None:
-            response = "I did not understand you. Can you please rephrase your input?"
-        
-        elif what_do_they_want == 'rotom':
-            what_do_they_want = None
-            response = "Rotom is a small, orange Pokémon that has a body of plasma. Its electric-like body can enter some kinds of machines and take control in order to make mischief. As a Pokédex, Rotom has access to data about many different Pokémon species. It was the inspiration for this tool as it was originally only able to analyse Pokémon data!\nWould you like to produce a graph or a data table/summarisation?"
-
-        elif what_do_they_want == "graph":
-            response, what_do_they_want, graph_df, return_type = handle_graph_generation(input_text, graph_df)
-
-        # want to make a data summarisation
-        elif what_do_they_want == "data":
-            response, what_do_they_want, graph_df, return_type = handle_data_conversation(input_text, graph_df)
-
-        else:
-            response = "Something went wrong. Please try again."
+        response, what_do_they_want, graph_df, data_df, return_type = generate_custom_response_based_on_convo(input_text, what_do_they_want, graph_df, data_df)
 
     return response, what_do_they_want, graph_df, data_df, return_type
       
@@ -450,7 +476,6 @@ def automate_visualisation(
     # if it is, we need to generate the data we want to visualise and generate the system of messages to send to OpenAI with our visualisation request
     if not previous_python_messages:
         # create SQL query for retrieving data
-        #TODO: alter code so that if user isn't happy with the data, they can request a change
         SQL_query, sql_query_result, sql_messages = automate_summarisation(data_required, data_for_graph=True)
 
         # save result locally and as string as variable
@@ -551,7 +576,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         messages = previous_sql_messages
         previous_assistant_content = {"role": "assistant", "content":previous_sql_result}
         messages.append(previous_assistant_content)
-        next_message = {"role": "user", "content":"This isn't quite what I need. Please can you change something in the SQL query: {}.".format(data_changes)}
+        next_message = {"role": "user", "content":"This isn't quite what I need. Please can you change something in the SQL query: {}. Make sure not to include any other text in your response apart from the SQL query itself. Thank you!".format(data_changes)}
         messages.append(next_message)   
     
     working = False
