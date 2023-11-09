@@ -31,14 +31,16 @@ cnxn = sqlite3.connect(r'C:\Users\Beth\Documents\Python Scripts\Be Digital\Busin
 
 def create_database_definition(cnxn) -> str:
 
-    query = "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
-    data_tables = pd.read_sql(query, cnxn)  
+    tables_query = "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
+    data_tables = pd.read_sql(tables_query, cnxn)  
 
     db_str = """"""
     for name in data_tables.name:
         temp_str = f"""Table: {name}\nColumns: """
-        query = f"PRAGMA table_info({name})"
-        table_info = pd.read_sql(query, cnxn)
+        foreign_keys_query = f"PRAGMA foreign_key_list({name})"
+        foreign_key_info = pd.read_sql(foreign_keys_query, cnxn)
+        table_info_query = f"PRAGMA table_info({name})"
+        table_info = pd.read_sql(table_info_query, cnxn)
         for col in table_info.itertuples():
             col_name = col.name
             col_type = col.type
@@ -46,7 +48,15 @@ def create_database_definition(cnxn) -> str:
                 col_pk = ", primary key"
             else:
                 col_pk = ""
-            col_str = f"{col_name} ({col_type}{col_pk})"
+
+            if col_name in foreign_key_info["from"].unique():
+                fk_table = foreign_key_info[foreign_key_info["from"] == col_name]["table"].iloc[0]
+                fk_col = foreign_key_info[foreign_key_info["from"] == col_name]["to"].iloc[0]
+                col_fk = f", foreign_key references {fk_table}({fk_col})"
+            else:
+                col_fk = ""
+
+            col_str = f"{col_name} ({col_type}{col_pk}{col_fk})"
             temp_str = temp_str + col_str + ", "
         
         if len(db_str) == 0:
@@ -525,7 +535,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         # Alternative model for generating SQL queries        
         messages = [
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "Here is a description of the tables within my SQLite database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Don't use the word LIMIT.}}".format(data, summarisation_description)},
+                    {"role": "user", "content": "Here is a description of the tables within my SQLite database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}.}}".format(data, summarisation_description)},
                 ]
         working = False
         i = 0
