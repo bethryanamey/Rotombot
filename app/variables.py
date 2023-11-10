@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import pandas as pd
 
 matching_phrases = {    
@@ -5,7 +6,7 @@ matching_phrases = {
     'visualise': [r'.*[visualise|show|draw|present] this in a graph.*'],
     'graph': [r'.*graph.*', r'.*visual.*'], 
     'data': [r'.*table.*', r'.*summarisation.*', r'.*aggregate.*'],
-    'rotom': [r'.*[learn|know].*about rotom.*'],
+    'rotom': [r'.*[learn|know].*about rotom.*', r'.*[who|what].*rotom*'],
     # show me the code please, how was this summarisation made, what code was used to make this
     'code': [r'.*show.*code*', r'.*how.*made*', r'.*what.*code*'],
     # this didn't work, this didnt work, there was a problem, this isnt right, this isn't right, this is not right

@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import warnings
 warnings.simplefilter(action='ignore', category=UserWarning)
 
@@ -7,7 +8,6 @@ from streamlit_extras.colored_header import colored_header
 from streamlit_extras.add_vertical_space import add_vertical_space
 import openai
 import os
-import pyodbc
 import sqlite3
 import pandas as pd
 import tiktoken
@@ -24,9 +24,10 @@ import hidden_variables as hvr
 # key for using OpenAI (this is how they charge you)
 openai.api_key_path = hvr.api_key_path
 
-# sql server connection
-cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
-               trusted_connection='yes')
+# LOCAL DATA CONNECTION (Beth's laptop)
+# cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
+#                trusted_connection='yes')
+
 # sqlite connection
 cnxn = sqlite3.connect(r'data\pokemon.db')
 
