@@ -33,7 +33,7 @@ client = openai.OpenAI(
 #                trusted_connection='yes')
 
 # sqlite connection
-cnxn = sqlite3.connect(r'data\pokemon.db')
+cnxn = sqlite3.connect(r'/app/data/pokemon.db')
 
 def create_database_definition(cnxn) -> str:
 
@@ -94,11 +94,6 @@ data = create_database_definition(cnxn)
 # Table: processed_flooding_data
 # Columns: Occurred (date at which event occurred, datetime2), distance_to_nearest_station (how the close the event was to a weather station, float), proximity_to_river (how close the event was to a river, float), proximity_to_coast (how close the event was to a river, float), rain_day (amount of rainfall in the day, float), rain_month (amount of rainfall in a month, float), rain_15mins (amount of rainfall in the last 15 minutes, float), flood_class (classification determining whether there was a flood or not, tinyint), year (int), month (int), hour (int)
 # """
-
-with open("openai_log.txt", "a") as myfile:
-    myfile.write("\nDATABASE DESCRIPTION:\n")
-    myfile.write(data)
-    myfile.write("\n##################")
 
 def log_openai_use(model, messages, response):
     """
