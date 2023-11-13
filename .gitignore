@@ -4,3 +4,9 @@ __pycache__/variables.cpython-311.pyc
 temp_data.csv
 anonymous.sqlite3/
 
+open_ai_key.txt
+app/api_key.env
+app/.env
+compose.yaml
+app/openai_log.txt
+.gitignore

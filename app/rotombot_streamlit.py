@@ -18,12 +18,12 @@ from PIL import Image
 import time
 import ast
 import sys
+from datetime import datetime
 
 import variables as vr
 import hidden_variables as hvr
 
 # key for using OpenAI (this is how they charge you)
-openai.api_key_path = hvr.api_key_path
 client = openai.OpenAI(
   organization=hvr.beths_organisation,
 )
@@ -94,6 +94,27 @@ data = create_database_definition(cnxn)
 # Table: processed_flooding_data
 # Columns: Occurred (date at which event occurred, datetime2), distance_to_nearest_station (how the close the event was to a weather station, float), proximity_to_river (how close the event was to a river, float), proximity_to_coast (how close the event was to a river, float), rain_day (amount of rainfall in the day, float), rain_month (amount of rainfall in a month, float), rain_15mins (amount of rainfall in the last 15 minutes, float), flood_class (classification determining whether there was a flood or not, tinyint), year (int), month (int), hour (int)
 # """
+
+with open("openai_log.txt", "a") as myfile:
+    myfile.write("\nDATABASE DESCRIPTION:\n")
+    myfile.write(data)
+    myfile.write("\n##################")
+
+def log_openai_use(model, messages, response):
+    """
+    Having called API, log input and output
+    """
+    to_log = {
+        "date":datetime.now().strftime(format="%d/%m/%Y %H:%M"),
+        "model":model,
+        "messages":messages,
+        "response":response
+    }
+    with open("openai_log.txt", "a") as myfile:
+        myfile.write(str(to_log))
+        myfile.write("\n\n")
+
+    return
 
 # reset conversation
 def on_btn_click(graph_df, data_df, what_do_they_want, profanity=False):
@@ -544,6 +565,9 @@ def automate_visualisation(
             model=model,
             messages=messages
         )
+        # log usage
+        log_openai_use(model, messages, response.choices[0].message)
+
         # extract plotting code from openAI
         plotting_code = response.choices[0].message.content
         if "```python" in plotting_code:
@@ -611,6 +635,9 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
             model=model,
             messages=messages
         )
+        # log usage
+        log_openai_use(model, messages, response.choices[0].message)
+
         gpt_response = response.choices[0].message.content
         print(gpt_response)
         if "```sql" in gpt_response:
@@ -678,6 +705,9 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
             model=model,
             messages=sentence_messages
         )
+        #log usage
+        log_openai_use(model, sentence_messages, response.choices[0].message)
+
         # extract plotting code from openAI
         answer_in_a_sentence = response.choices[0].message.content
 
