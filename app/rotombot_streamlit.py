@@ -17,12 +17,16 @@ from profanity_check import predict as profanity_predict
 from PIL import Image
 import time
 import ast
+import sys
 
 import variables as vr
 import hidden_variables as hvr
 
 # key for using OpenAI (this is how they charge you)
 openai.api_key_path = hvr.api_key_path
+client = openai.OpenAI(
+  organization=hvr.beths_organisation,
+)
 
 # LOCAL DATA CONNECTION (Beth's laptop)
 # cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
@@ -474,26 +478,6 @@ def match_reply(reply, matching_phrases):
     
     return None
 
-def num_tokens_from_messages(messages, model="gpt-3.5-turbo"):
-    """Returns the number of tokens used by a list of messages."""
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    if model == "gpt-3.5-turbo":  # note: future models may deviate from this
-        num_tokens = 0
-        for message in messages:
-            num_tokens += 4  # every message follows <im_start>{role/name}{content}<im_end>
-            for key, value in message.items():
-                num_tokens += len(encoding.encode(value))
-                if key == "name":  # if there's a name, the role is omitted
-                    num_tokens += -1  # role is always required and always 1 token
-        num_tokens += 2  # every reply is primed with <im_start>assistant
-        return num_tokens
-    else:
-        raise NotImplementedError(f"""num_tokens_from_messages() is not presently implemented for model {model}.
-    See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.""")
-
 def automate_visualisation(
         data_required: str, 
         visualisation_description: str, 
@@ -532,7 +516,7 @@ def automate_visualisation(
 
         # check size of request to OpenAI - if it is too big, it will fail
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for witing python code."},
             {"role": "user", "content": "I'd like a python script to help me with generating a graph from data please. My data is in the next message as a csv."},
             {"role": "assistant", "content": "Please provide the data in the next message as a CSV (Comma-Separated Values) format, and let me know what type of graph you would like to create."},
             {"role": "user", "content": data_string},
@@ -554,18 +538,14 @@ def automate_visualisation(
     while working == False and i < 5:
         i += 1
         model = "gpt-3.5-turbo-16k"
-        n_tokens = num_tokens_from_messages(messages)
-        if n_tokens > 16384:
-            e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
-            raise Exception(e)
         
         # send request to OpenAI for python code to plot visual
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model=model,
             messages=messages
         )
         # extract plotting code from openAI
-        plotting_code = response["choices"][0]["message"]["content"]
+        plotting_code = response.choices[0].message.content
         if "```python" in plotting_code:
             plotting_code = plotting_code.split("```python")[1].split("```")[0]
         else:
@@ -583,7 +563,7 @@ def automate_visualisation(
             working = True
         except Exception as e:
             print("Code didn't work: {}".format(e))
-            gpt_response = {"role": "assistant", "content":response["choices"][0]["message"]["content"]}
+            gpt_response = {"role": "assistant", "content":response.choices[0].message.content}
             messages.append(gpt_response)
             new_message = {"role": "user", "content":"This code didn't work. Please can you try again."}
             messages.append(new_message)
@@ -595,7 +575,7 @@ def automate_visualisation(
     # delete code
     os.remove("plotter.py")
 
-    return SQL_query, plotting_code, messages, response["choices"][0]["message"]["content"]
+    return SQL_query, plotting_code, messages, response.choices[0].message.content
 
 def automate_summarisation(summarisation_description: str, data_for_graph: bool = False,
         previous_sql_messages: list = None,
@@ -609,7 +589,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     # if this is not the first time calling this function, there will be previous_sql_messages to improve upon 
     if not previous_sql_messages:     
         messages = [
-                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for SQLite databases."},
                     {"role": "user", "content": "Here is a description of the tables within my SQLite database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response.}}".format(data, summarisation_description)},
                 ]
         
@@ -625,18 +605,13 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     i = 0
     while not working:
 
-        model = "gpt-4"
-        n_tokens = num_tokens_from_messages(messages)
-        if n_tokens > 16384:
-            e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
-            raise Exception(e)
-        
+        model = "gpt-4"        
         # send request to OpenAI for python code to plot visual
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model=model,
             messages=messages
         )
-        gpt_response = response["choices"][0]["message"]["content"]
+        gpt_response = response.choices[0].message.content
         print(gpt_response)
         if "```sql" in gpt_response:
             SQL_query = gpt_response.split("```sql")[1].split("```")[0]
@@ -675,7 +650,6 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
 
     # if result only has one row, assume they have asked for an aggregation/looking for a particular object
     # ask ChatGPT if they can phrase the answer in a sentence
-    #messages = None
     if len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
         result_csv = sql_query_result.to_csv(index=False)
 
@@ -698,19 +672,14 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
                 {"role": "user", "content": "The customer asked '{}' and the answer I got is {} (in CSV format)".format(user_question, result_csv)}
             ]
 
-        model = "gpt-3.5-turbo"
-        n_tokens = num_tokens_from_messages(sentence_messages)
-        if n_tokens > 4096:
-            e = "Data for query is too large for ChatGPT. Trying querying a smaller subset of data."
-            raise Exception(e)
-        
+        model = "gpt-3.5-turbo"        
         # send request to OpenAI for python code to plot visual
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model=model,
             messages=sentence_messages
         )
         # extract plotting code from openAI
-        answer_in_a_sentence = response["choices"][0]["message"]["content"]
+        answer_in_a_sentence = response.choices[0].message.content
 
         return_type = 0
 
