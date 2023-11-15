@@ -8,6 +8,7 @@ from streamlit_extras.colored_header import colored_header
 from streamlit_extras.add_vertical_space import add_vertical_space
 import openai
 import os
+import pyodbc
 import sqlite3
 import pandas as pd
 import tiktoken
@@ -32,10 +33,21 @@ client = openai.OpenAI(
 # cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
 #                trusted_connection='yes')
 
-# sqlite connection
-cnxn = sqlite3.connect(r'/app/data/pokemon.db')
+# Azure SQL Server connection
+sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
+cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+                      'Server=tcp:rotom-db-server.database.windows.net,1433;'
+                      'Database=rotom-db;'
+                      'Uid=rotom-admin;'
+                      'Pwd='+sql_server_password+';'
+                      'Encrypt=yes;'
+                      'TrustServerCertificate=no;'
+                      'Connection Timeout=30;')
 
-def create_database_definition(cnxn) -> str:
+# sqlite connection
+# cnxn = sqlite3.connect(r'/app/data/pokemon.db')
+
+def create_database_definition_sqlite(cnxn) -> str:
 
     tables_query = "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
     data_tables = pd.read_sql(tables_query, cnxn)  
@@ -72,28 +84,77 @@ def create_database_definition(cnxn) -> str:
 
     return db_str
 
+#TODO: get schema (pokemon_public)
+def create_database_definition_sql_server(cnxn) -> str:
+
+    tables_query = """SELECT name from sys.tables;"""
+    data_tables = pd.read_sql(tables_query, cnxn)  
+
+    db_str = """"""
+    for name in data_tables.name:
+        temp_str = f"""Table: {name}\nColumns: """
+        foreign_keys_query = f"""
+        SELECT   
+            f.name AS foreign_key_name  
+            , COL_NAME(fc.parent_object_id, fc.parent_column_id) AS [from]
+            , OBJECT_NAME (f.referenced_object_id) AS [table]  
+            , COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS [to]  
+        FROM sys.foreign_keys AS f  
+        INNER JOIN sys.foreign_key_columns AS fc   
+            ON f.object_id = fc.constraint_object_id 
+        WHERE OBJECT_NAME(f.parent_object_id) = '{name}'"""
+        foreign_key_info = pd.read_sql(foreign_keys_query, cnxn)
+        primary_keys_query = f"""
+        SELECT 
+            tab.[name] as table_name
+            , col.[name] as column_name
+        FROM sys.tables tab
+        inner join sys.indexes pk
+            on tab.object_id = pk.object_id 
+            and pk.is_primary_key = 1
+        INNER JOIN sys.index_columns ic
+            ON ic.object_id = pk.object_id
+            AND ic.index_id = pk.index_id
+        INNER JOIN sys.columns col
+            ON pk.object_id = col.object_id
+            AND col.column_id = ic.column_id
+        WHERE tab.[name] = '{name}'"""
+        primary_key_info = pd.read_sql(primary_keys_query, cnxn)
+        table_info_query = f"""
+        SELECT 
+            TABLE_NAME
+            , COLUMN_NAME
+            , DATA_TYPE
+        FROM information_schema.columns
+        WHERE TABLE_NAME = '{name}'"""
+        table_info = pd.read_sql(table_info_query, cnxn)
+        for col in table_info.itertuples():
+            col_name = col.COLUMN_NAME
+            col_type = col.DATA_TYPE
+            if col_name in primary_key_info["column_name"].unique():
+                col_pk = ", primary key"
+            else:
+                col_pk = ""
+
+            if col_name in foreign_key_info["from"].unique():
+                fk_table = foreign_key_info[foreign_key_info["from"] == col_name]["table"].iloc[0]
+                fk_col = foreign_key_info[foreign_key_info["from"] == col_name]["to"].iloc[0]
+                col_fk = f", foreign_key references {fk_table}({fk_col})"
+            else:
+                col_fk = ""
+
+            col_str = f"{col_name} ({col_type}{col_pk}{col_fk})"
+            temp_str = temp_str + col_str + ", "
+        
+        if len(db_str) == 0:
+            db_str = temp_str[:-2]
+        else:
+            db_str = db_str + "\n\n" + temp_str[:-2]
+
+    return db_str
+
 # description of the available tables 
-data = create_database_definition(cnxn)
-
-# description of the available tables (this could be achieved using the above connection rather than manually written)
-# data = """
-# Table: pokemon
-# Columns: pokedex_number (integer, primary key), name (varchar(50)), attack (integer), base_happiness (integer), defense (integer), height_m (float), hp (integer), percentage_male (float), sp_attack (integer), sp_defense (integer), speed (integer), type1_id (tinyint, foreign key references type_ids(type_id)), type2_id (tinyint, foreign key references type_ids(type_id)), weight_kg (float), generation (tinyint), is_legendary (tinyint))
-
-# Table: type_ids
-# Columns: type (nvahrchar(50)), type_id (tinyint, primary_key)
-
-# Table: fruit_prices
-# Columns: FruitID (tinyint, primary key), Fruit (nvarchar(100)), Form (nvarchar(100)), RetailPrice (float), RetailPriceUnit (nvarchar(100))
-
-# Table: fruit_transactions
-# Columns: TransactionID (smallint, primary key), OrderID (smallint), Customer (nvarchar(100), FruitID (tinyint, foreign key references fruit_prices(FruitID)), Quantity_Pounds (int)
-# """
-
-# data = """
-# Table: processed_flooding_data
-# Columns: Occurred (date at which event occurred, datetime2), distance_to_nearest_station (how the close the event was to a weather station, float), proximity_to_river (how close the event was to a river, float), proximity_to_coast (how close the event was to a river, float), rain_day (amount of rainfall in the day, float), rain_month (amount of rainfall in a month, float), rain_15mins (amount of rainfall in the last 15 minutes, float), flood_class (classification determining whether there was a flood or not, tinyint), year (int), month (int), hour (int)
-# """
+data = create_database_definition_sql_server(cnxn)
 
 def log_openai_use(model, messages, response):
     """
@@ -608,8 +669,8 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     # if this is not the first time calling this function, there will be previous_sql_messages to improve upon 
     if not previous_sql_messages:     
         messages = [
-                    {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for SQLite databases."},
-                    {"role": "user", "content": "Here is a description of the tables within my SQLite database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response.}}".format(data, summarisation_description)},
+                    {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
+                    {"role": "user", "content": "Here is a description of the tables within my SQL database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response.}}".format(data, summarisation_description)},
                 ]
         
     # otherwise, function has been called before and we want to make improvements

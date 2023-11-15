@@ -16,18 +16,19 @@ services:
     environment:
       # Open AI information
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    volumes:
-      - pokemon:/app/data
-    depends_on:
-      - db
+      - SQL_SERVER_PASSWORD=${SQL_SERVER_PASSWORD}
+    # volumes:
+    #   - pokemon:/app/data
+    # depends_on:
+    #   - db
 
-  db:
-    image: "keinos/sqlite3:latest"
-    command: "echo .schema | sqlite3 /var/lib/sqlite/pokemon.db"
-    volumes:
-      - pokemon:/var/lib/sqlite
+#   db:
+#     image: "keinos/sqlite3:latest"
+#     command: "echo .schema | sqlite3 /var/lib/sqlite/pokemon.db"
+#     volumes:
+#       - pokemon:/var/lib/sqlite
 
-volumes:
-  pokemon:
+# volumes:
+#   pokemon:
 
 
