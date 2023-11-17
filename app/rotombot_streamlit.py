@@ -24,28 +24,40 @@ from datetime import datetime
 import variables as vr
 import hidden_variables as hvr
 
+# BETH'S OPENAI CONNECTION
 # key for using OpenAI (this is how they charge you)
-client = openai.OpenAI(
-  organization=hvr.beths_organisation,
-)
+# API key is an environment variable that doesn't need to be mentioned
+# client = openai.OpenAI(
+#   organization=hvr.beths_organisation,
+# )
 
-# LOCAL DATA CONNECTION (Beth's laptop)
+# AZURE OPENAI CONNECTION
+client = openai.AzureOpenAI(
+    api_key=os.getenv("AZURE_OPENAI_KEY"),  
+    api_version="2023-10-01-preview",
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    )
+
+deployment_name_4=os.getenv("DEPLOYMENT_NAME_4")
+deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
+
+# LOCAL SQL SERVER DATA CONNECTION (Beth's laptop)
 # cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
 #                trusted_connection='yes')
 
-# Azure SQL Server connection
+# SQLITE .db FILE CONNECTION
+# cnxn = sqlite3.connect(r'/app/data/pokemon.db')
+
+# AZURE SQL SERVER CONNECTION
 sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
 cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
                       'Database=rotom-db;'
-                      'Uid=rotom-admin;'
+                      'Uid=rotom_container;'
                       'Pwd='+sql_server_password+';'
                       'Encrypt=yes;'
                       'TrustServerCertificate=no;'
-                      'Connection Timeout=30;')
-
-# sqlite connection
-# cnxn = sqlite3.connect(r'/app/data/pokemon.db')
+                      'Connection Timeout=120;')
 
 def create_database_definition_sqlite(cnxn) -> str:
 
@@ -84,7 +96,7 @@ def create_database_definition_sqlite(cnxn) -> str:
 
     return db_str
 
-#TODO: get schema (pokemon_public)
+#TODO: when connecting to the data lake, get schema (pokemon_public)
 def create_database_definition_sql_server(cnxn) -> str:
 
     tables_query = """SELECT name from sys.tables;"""
@@ -618,7 +630,8 @@ def automate_visualisation(
         
         # send request to OpenAI for python code to plot visual
         response = client.chat.completions.create(
-            model=model,
+            # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-3.5-turbo-16k" (variable a few lines above)
+            model=deployment_name_35,
             messages=messages
         )
         # log usage
@@ -688,7 +701,8 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         model = "gpt-4"        
         # send request to OpenAI for python code to plot visual
         response = client.chat.completions.create(
-            model=model,
+            # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-4" (variable a few lines above)
+            model=deployment_name_4,
             messages=messages
         )
         # log usage
@@ -758,7 +772,8 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         model = "gpt-3.5-turbo"        
         # send request to OpenAI for python code to plot visual
         response = client.chat.completions.create(
-            model=model,
+            # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-3.5-turbo" (variable a few lines above)
+            model=deployment_name_35,
             messages=sentence_messages
         )
         #log usage

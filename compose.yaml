@@ -15,7 +15,10 @@ services:
       - 8501:8501
     environment:
       # Open AI information
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - DEPLOYMENT_NAME_4=${DEPLOYMENT_NAME_4}
+      - DEPLOYMENT_NAME_35=${DEPLOYMENT_NAME_35}
       - SQL_SERVER_PASSWORD=${SQL_SERVER_PASSWORD}
     # volumes:
     #   - pokemon:/app/data
