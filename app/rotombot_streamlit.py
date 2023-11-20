@@ -57,7 +57,16 @@ cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
                       'Pwd='+sql_server_password+';'
                       'Encrypt=yes;'
                       'TrustServerCertificate=no;'
-                      'Connection Timeout=120;')
+                      'Connection Timeout=240;')
+
+# DATA LAKE TODO: what to do about schema
+# cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+#                       'Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;'
+#                       'Database=public;'
+#                       'Authentication=ActiveDirectoryMsi'
+#                       'Encrypt=yes;'
+#                       'TrustServerCertificate=no;'
+#                       'Connection Timeout=120;')
 
 def create_database_definition_sqlite(cnxn) -> str:
 
@@ -237,6 +246,16 @@ def update_last_completed_step(df, stage_of_completed_step, input_text):
 
     return df
 
+def save_previous_content(graph_df, var):
+    """
+    If user isn't happy, save previous question and answer from chatgpt
+    """
+    previous_var = "previous_" + var
+    graph_df.loc[graph_df.variable == previous_var, "input"] = graph_df[graph_df.variable == var]["input"].iloc[0]
+
+    return graph_df
+
+
 def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
     """
     Use updates in the graph_df to understand progression of conversation and help with creating a visual.
@@ -262,7 +281,7 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
     # we know everything about what the user wants but it hasn't been executed/no changes requested
     elif all(graph_df[graph_df.stage == 1]["completed"] == True) and all(graph_df[(graph_df.stage >= 2)]["completed"] == False):
         # if we haven't been here before, get the last step completed and update with input
-        if all(graph_df[graph_df.variable == "problem"]["input"].isnull()):
+        if all(graph_df[graph_df.stage == 6]["input"].isnull()):
             graph_df = update_last_completed_step(graph_df, stage_of_completed_step=1, input_text=input_text)
 
         # generate graph
@@ -275,41 +294,54 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
         vr.plots.append(response)
         return_type = 1
 
-        previous_messages = None
-        previous_response = None
+        previous_SQL_messages = None
+        previous_python_messages = None
+        previous_SQL_gpt_response = None
+        previous_python_gpt_response = None
+        data_changes = None
         visual_changes = None
 
         # check whether we are here because user requested visual changes    
-        if any(~graph_df[graph_df.stage == 6]["input"].isnull()):           
-            graph_changes = graph_df[graph_df.variable == "visual_changes"]["input"].iloc[0]
-            if graph_changes:
-                previous_messages = ast.literal_eval(graph_df[graph_df.variable == "previous_messages"]["input"].iloc[0])
-                previous_response = graph_df[graph_df.variable == "previous_response"]["input"].iloc[0]
+        if any(~graph_df[graph_df.stage == 7]["input"].isnull()):           
+            graph_changes_requested = graph_df[graph_df.variable == "visual_changes"]["input"].iloc[0]
+            if graph_changes_requested:
+                previous_python_messages = ast.literal_eval(graph_df[graph_df.variable == "previous_python_messages"]["input"].iloc[0])
+                previous_python_gpt_response = graph_df[graph_df.variable == "previous_python_gpt_response"]["input"].iloc[0]
                 visual_changes = graph_df[graph_df.variable == "visual_changes"]["input"].iloc[0]
+            data_changes_requested = graph_df[graph_df.variable == "data_changes"]["input"].iloc[0]
+            if data_changes_requested:
+                previous_SQL_messages = ast.literal_eval(graph_df[graph_df.variable == "previous_SQL_messages"]["input"].iloc[0])
+                previous_SQL_gpt_response = graph_df[graph_df.variable == "previous_SQL_gpt_response"]["input"].iloc[0]
+                data_changes = graph_df[graph_df.variable == "data_changes"]["input"].iloc[0]
 
-        SQL_query, plotting_code, messages, gpt_response = automate_visualisation(
-                                                            data_required, 
+        # either no changes have been requested and this is the first attempt or data changes have been requested
+        if (data_changes == None and visual_changes == None) or data_changes != None:
+            SQL_query, data, SQL_messages, SQL_gpt_response = automate_summarisation(
+                                                                data_required, 
+                                                                data_for_graph=True,
+                                                                previous_sql_messages=previous_SQL_messages, 
+                                                                previous_sql_result=previous_SQL_gpt_response,
+                                                                data_changes=data_changes)
+            graph_df.loc[graph_df.variable == "SQL_query", "input"] = SQL_query
+            graph_df.loc[graph_df.variable == "SQL_messages", "input"] = str(SQL_messages)
+            graph_df.loc[graph_df.variable == "SQL_gpt_response", "input"] = SQL_gpt_response
+        # visual change has been requested but no data change => use data saved locally
+        else:
+            data = pd.read_csv("temp_data.csv")
+        plotting_code, python_messages, python_gpt_response = automate_visualisation(
+                                                            data, 
                                                             visualisation_description, 
                                                             customisation_options, 
                                                             plot_save_name=response, 
-                                                            previous_python_messages=previous_messages, 
-                                                            previous_python_result=previous_response, 
+                                                            previous_python_messages=previous_python_messages, 
+                                                            previous_python_result=previous_python_gpt_response, 
                                                             visual_changes=visual_changes)
 
-        # save results
-        # if only a graph change, no new SQL query will have been made (SQL_query = None) so don't change the old one 
-        if SQL_query:
-            graph_df.loc[graph_df.variable == "SQL_query", "input"] = SQL_query
+        # save results            
         graph_df.loc[graph_df.variable == "plotting_code", "input"] = plotting_code
-        graph_df.loc[graph_df.variable == "messages", "input"] = str(messages)
-        graph_df.loc[graph_df.variable == "gpt_response", "input"] = gpt_response
+        graph_df.loc[graph_df.variable == "python_messages", "input"] = str(python_messages)
+        graph_df.loc[graph_df.variable == "python_gpt_response", "input"] = python_gpt_response
         graph_df.loc[graph_df.stage == 2, "completed"] = True
-
-        # it didn't work, reset
-        if SQL_query == -1:
-            response = "Something went wrong. Please try again.\nPlease describe the data you would like in the visual."
-            graph_df.loc[:, "completed"] = False
-            graph_df.loc[:, "input"] = None
 
     # graph has been created, ask for if they want to know how it was made
     elif all(graph_df[(graph_df.stage == 2)]["completed"] == True) and all(graph_df[(graph_df.stage == 3)]["completed"] == False):
@@ -323,78 +355,67 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
             response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=3)
         # otherwise, need to handle users request to see how the result was made
         # user wants to know
-        elif input_text.lower() == "yes":
+        elif "yes" in input_text.lower():
             SQL_query = graph_df[graph_df.variable == "SQL_query"]["input"].iloc[0]
             plotting_code = graph_df[graph_df.variable == "plotting_code"]["input"].iloc[0]
             response = "SQL Query:\n{}\n\nPython Plotting Code:\n{}".format(SQL_query, plotting_code)
             return_type = 2
+            graph_df.loc[graph_df.variable == "show_work", "input"] = input_text
         # user doesn't want to know, do nothing 
         else:
             response = ""
             return_type = -1
-
-        # save that we acknowledged this
-        graph_df.loc[graph_df.variable == "show_work", "input"] = input_text
+            graph_df.loc[graph_df.variable == "show_work", "input"] = input_text        
 
     # we've requested all feedback - we know if they want to see work and we know if they're happy
     elif all(graph_df[(graph_df.stage == 3)]["completed"] == True) and all(graph_df[(graph_df.stage >= 4)]["completed"] == False):                
         # last completed will be them telling us theyre' happy
         graph_df = update_last_completed_step(graph_df, stage_of_completed_step=3, input_text=input_text)
         # user was happy, restart
-        if input_text.lower() == 'yes':
+        if 'yes' in input_text.lower():
             # done with making a graph
             what_do_they_want = None
             response = graph_df[graph_df.stage == 4]["prompt"].iloc[0]
             graph_df.loc[:, "completed"] = False
             graph_df.loc[:, "input"] = None
         # user wasn't happy, begin asking for more feedback
-        if input_text.lower() == "no":
+        if "no" in input_text.lower():
             # not going to graph_end variable
             graph_df.loc[graph_df.stage == 4, "completed"] = "Skip"
             response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=5)
 
-    # user ain't happy, ask for feedback
-    # (will have already sent one prompt for stage 5 asking what the problem is)
-    elif not all(graph_df[(graph_df.stage >= 5)]["completed"]) in ["Skip", True]:
+    # user ain't happy, ask for feedback (find out if it was the graph design or the data or both)
+    elif all(graph_df[(graph_df.stage == 6)]["completed"]) == False:
         graph_df = update_last_completed_step(graph_df, stage_of_completed_step=5, input_text=input_text)
-        # only need to update them once
-        if graph_df[graph_df.variable == "previous_messages"]["completed"].iloc[0] == False:
-            graph_df.loc[graph_df.variable == "previous_messages", "input"] = graph_df[graph_df.variable == "messages"]["input"].iloc[0]
-            graph_df.loc[graph_df.variable == "previous_response", "input"] = graph_df[graph_df.variable == "gpt_response"]["input"].iloc[0]
-            graph_df.loc[graph_df.variable.isin(["previous_messages", "previous_response"]), "completed"] = True
+        for var in ["SQL_messages", "python_messages", "SQL_gpt_response", "python_gpt_response"]:
+            graph_df = save_previous_content(graph_df, var)
+        graph_df.loc[graph_df.stage == 6, "completed"] = True
 
-        things_to_change = graph_df[graph_df.variable == "problem"]["input"].iloc[0]
-
-        if "both" in things_to_change or ("data" in things_to_change and "graph" in things_to_change):                    
-            response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=6)
-        elif "data" in things_to_change:
+        if "both" in input_text or ("data" in input_text and "graph" in input_text):                    
+            response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)
+        elif "data" in input_text:
             # don't worry about graph
             graph_df.loc[graph_df.variable == "visual_changes", "completed"] = "Skip"
-            response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=6)
-        elif "graph" in things_to_change:                    
+            response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)
+        elif "graph" in input_text:                    
             # don't worry about data
             graph_df.loc[graph_df.variable == "data_changes", "completed"] = "Skip"
-            response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=6)
+            response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)
         else:
             response = "I didn't understand. Can you rephrase the input ('graph', 'data', or 'both')."
 
+    # haven't collected all the necessary feedback from the user
+    elif not all(graph_df[(graph_df.stage == 7)]["completed"]) in ["Skip", True]:  
+        graph_df = update_last_completed_step(graph_df, stage_of_completed_step=7, input_text=input_text)
+        response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)        
+
     # all feedback has been given 
     elif all(graph_df["completed"]) in ["Skip", True]:
-        graph_df = update_last_completed_step(graph_df, stage_of_completed_step=6, input_text=input_text)
-
-        # if data changes were requested, append them to the previous request
-        data_changes_requested = graph_df[graph_df.variable == "data_changes"]["completed"].iloc[0]
-        if data_changes_requested == True:
-            data_changes = graph_df[graph_df.variable == "data_changes"]["input"].iloc[0]
-            if data_changes != "":
-                previous_data_request = graph_df[graph_df.variable == "data_required"]["input"].iloc[0]
-                graph_df.loc[graph_df.variable == "data_required", "input"] = previous_data_request + ", " + data_changes            
-        
-        # if graph changes were requested, these are inputted into automate_visualisation function
+        graph_df = update_last_completed_step(graph_df, stage_of_completed_step=7, input_text=input_text)      
         # reset parts of graph df so that program goes back to building graph
         # don't delete some previous inputs as we will use them again
         graph_df.loc[graph_df.stage >= 2, "completed"] = False  
-        graph_df.loc[graph_df.stage.isin([2, 3, 4, 5]), "input"] = None  
+        graph_df.loc[graph_df.stage.isin([3, 4, 5]), "input"] = None  
         response = ""
         return_type = -1    
 
@@ -568,7 +589,7 @@ def match_reply(reply, matching_phrases):
     return None
 
 def automate_visualisation(
-        data_required: str, 
+        data: pd.DataFrame, 
         visualisation_description: str, 
         customisation_options: str = None, 
         plot_save_name: str = "temp_plot", 
@@ -578,8 +599,9 @@ def automate_visualisation(
     ):
     """
     Use plain english texts to automatically create custom visualisation
+    ## ASSUMES automate_summarisation FUNCTION HAS BEEN EXECUTED ##
     Can also improve on previous prompts if the rpevious messages and response are inputted
-        data_required: str, description of data needed for visual
+        data: pd.DataFrame, df containing data obtained when SQL query was executed in automate summarisation function
         visualisation_description: str, description of the visual that the user would like to create. This includes type of plot and axis values
         customisation_options: str, optional, additional features that the visual should include e.g. fig size, colours
         plot_save_name: str, name of plot without file type ending
@@ -590,13 +612,8 @@ def automate_visualisation(
     # if this is not the first time calling this function, the data string will be in the previous python messages so we don't need to get data again
     # if it is, we need to generate the data we want to visualise and generate the system of messages to send to OpenAI with our visualisation request
     if not previous_python_messages:
-        # create SQL query for retrieving data
-        SQL_query, sql_query_result, sql_messages = automate_summarisation(data_required, data_for_graph=True)
-
-        # save result locally and as string as variable
-        sql_query_result.to_csv("temp_data.csv", index=False)
-        # only send a sample of data to OpenAI - prevent size of query being too longconda
-        data_string = sql_query_result.head(10).to_csv(index=False)
+        # only send a sample of data to OpenAI as csv - prevent size of query being too long
+        data_string = data.head(10).to_csv(index=False)
 
         # final visual query
         visual_query = "{}. Please include any necessary imports. Don't include any additional text other than the python script. Assume the data is saved in a csv called temp_data.csv. Make sure the code saves the plot as {}, but it does not need to display the plot (i.e. no plt.show()).".format(visualisation_description, plot_save_name) #Use xkcd sktch-style drawing mode
@@ -615,7 +632,6 @@ def automate_visualisation(
 
     # otherwise, function has been called before and we want to make improvements
     else:
-        SQL_query = None
         messages = previous_python_messages
         previous_assistant_content = {"role": "assistant", "content":previous_python_result}
         messages.append(previous_assistant_content)
@@ -625,7 +641,6 @@ def automate_visualisation(
     working = False
     i = 0
     while working == False and i < 5:
-        i += 1
         model = "gpt-3.5-turbo-16k"
         
         # send request to OpenAI for python code to plot visual
@@ -638,11 +653,11 @@ def automate_visualisation(
         log_openai_use(model, messages, response.choices[0].message)
 
         # extract plotting code from openAI
-        plotting_code = response.choices[0].message.content
-        if "```python" in plotting_code:
-            plotting_code = plotting_code.split("```python")[1].split("```")[0]
+        gpt_response = response.choices[0].message.content
+        if "```python" in gpt_response:
+            plotting_code = gpt_response.split("```python")[1].split("```")[0]
         else:
-            plotting_code = plotting_code.split("```")[1].split("```")[0]
+            plotting_code = gpt_response.split("```")[1].split("```")[0]
 
         # save code locally so that it can be executed 
         with open("plotter.py", "w", encoding="utf-8") as f:
@@ -655,20 +670,21 @@ def automate_visualisation(
             subprocess.check_output(['python', "plotter.py"])
             working = True
         except Exception as e:
+            i += 1
+            # if we have failed 3 times:
+            if i == 2:
+                raise Exception(e)
             print("Code didn't work: {}".format(e))
-            gpt_response = {"role": "assistant", "content":response.choices[0].message.content}
-            messages.append(gpt_response)
+            gpt_response_message = {"role": "assistant", "content":gpt_response}
+            messages.append(gpt_response_message)
             new_message = {"role": "user", "content":"This code didn't work. Please can you try again."}
             messages.append(new_message)
             time.sleep(3)
 
-    if working == False:
-        return -1, None, None, None  
-
     # delete code
     os.remove("plotter.py")
 
-    return SQL_query, plotting_code, messages, response.choices[0].message.content
+    return plotting_code, messages, gpt_response
 
 def automate_summarisation(summarisation_description: str, data_for_graph: bool = False,
         previous_sql_messages: list = None,
@@ -743,19 +759,20 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
 
     return_type = 3
     if data_for_graph:
-        return SQL_query, sql_query_result, messages
+        # save data locally
+        sql_query_result.to_csv("temp_data.csv", index=False)
+        return SQL_query, sql_query_result, messages, gpt_response
 
     # if result only has one row, assume they have asked for an aggregation/looking for a particular object
     # ask ChatGPT if they can phrase the answer in a sentence
     if len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
         result_csv = sql_query_result.to_csv(index=False)
 
-        # if data_changes:
-        #     user_question = summarisation_description + " " + data_changes
-        # else:
-        #     user_question = summarisation_description
-
         user_question = summarisation_description
+        if data_changes:
+            gpt_input = f"The customer originally asked '{user_question}' but the requested to make the following change to their query: '{data_changes}'. The answer I got is {result_csv} (in CSV format)"
+        else:
+            gpt_input = f"The customer asked '{user_question}' and the answer I got is {result_csv} (in CSV format)"
 
         # write result into a sentence
         sentence_messages=[
@@ -766,7 +783,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
                 {"role": "assistant", "content": "Mewtwo is 2 metres tall."},
                 {"role": "user", "content": "This is perfect! Thank you. Can you do it again for another question?"},
                 {"role": "assistant", "content": "Of course! I'm here to help. Please provide me with the new data question and the corresponding result, and I'll assist you in constructing a response sentence."},
-                {"role": "user", "content": "The customer asked '{}' and the answer I got is {} (in CSV format)".format(user_question, result_csv)}
+                {"role": "user", "content": gpt_input}
             ]
 
         model = "gpt-3.5-turbo"        

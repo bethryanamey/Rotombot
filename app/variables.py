@@ -31,18 +31,22 @@ graph_df = pd.DataFrame([
     # results from automate_visualtion (no prompt needed)
     [2, "SQL_query", None, False, None],
     [2, "plotting_code", None, False, None],
-    [2, "messages", None, False, None],
-    [2, "gpt_response", None, False, None],
+    [2, "SQL_messages", None, False, None],
+    [2, "python_messages", None, False, None],
+    [2, "SQL_gpt_response", None, False, None],
+    [2, "python_gpt_response", None, False, None],
     [3, "show_work", "Do you want to see how the result was made? Yes or No", False, None],
     [3, "happy", "Were you happy with the result? Yes or No", False, None],
     # if we are populating this variable, empty dataframe
     [4, "graph_end", "Great, glad I could help! Would you like to produce another graph or a data table/summarisation?", False, None],
     [5, "problem", "Was it a problem with the data or graph? Enter 'data', 'graph', or 'both'. Enter nothing if you want the program to try again with the previous prompts", False, None],
     # if data_changes, prompt to automate_visualisation will be data_required + data_changes    
-    [6, "previous_messages", None, False, None],
-    [6, "previous_response", None, False, None],
-    [6, "data_changes", "What would you like to change about the data? Write a prompt to add to your initial input. Enter nothing if you want the program to try again with the previous prompts", False, None],
-    [6, "visual_changes", "What would you like to see different in the graph? Write a prompt to add to your initial input. Enter nothing if you want the program to try again with the previous prompts", False, None]
+    [6, "previous_SQL_messages", None, False, None],
+    [6, "previous_python_messages", None, False, None],
+    [6, "previous_SQL_gpt_response", None, False, None],
+    [6, "previous_python_gpt_response", None, False, None],
+    [7, "data_changes", "What would you like to change about the data? Write a prompt to add to your initial input. Enter nothing if you want the program to try again with the previous prompts", False, None],
+    [7, "visual_changes", "What would you like to see different in the graph? Write a prompt to add to your initial input. Enter nothing if you want the program to try again with the previous prompts", False, None]
 ], columns=["stage", "variable", "prompt", "completed", "input"])
 
 #TODO: use dict instead of df
