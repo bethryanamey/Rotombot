@@ -9,16 +9,16 @@ from streamlit_extras.add_vertical_space import add_vertical_space
 import openai
 import os
 import pyodbc
-import sqlite3
+from azure.identity import ManagedIdentityCredential
+import struct
+# import sqlite3
 import pandas as pd
-import tiktoken
 import subprocess
 import re
 from profanity_check import predict as profanity_predict
 from PIL import Image
 import time
 import ast
-import sys
 from datetime import datetime
 
 import variables as vr
@@ -49,24 +49,30 @@ deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
 # cnxn = sqlite3.connect(r'/app/data/pokemon.db')
 
 # AZURE SQL SERVER CONNECTION
-sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
-cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                      'Server=tcp:rotom-db-server.database.windows.net,1433;'
-                      'Database=rotom-db;'
-                      'Uid=rotom_container;'
-                      'Pwd='+sql_server_password+';'
-                      'Encrypt=yes;'
-                      'TrustServerCertificate=no;'
-                      'Connection Timeout=240;')
-
-# DATA LAKE TODO: what to do about schema
+# sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
 # cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-#                       'Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;'
-#                       'Database=public;'
-#                       'Authentication=ActiveDirectoryMsi'
+#                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
+#                       'Database=rotom-db;'
+#                       'Uid=rotom_container;'
+#                       'Pwd='+sql_server_password+';'
 #                       'Encrypt=yes;'
 #                       'TrustServerCertificate=no;'
-#                       'Connection Timeout=120;')
+#                       'Connection Timeout=240;')
+
+# DATA LAKE CONNECTION (AZURE SYNAPSE)
+# Using a token
+objectid = str(os.environ["MI_OBJECT_ID"])
+client_id = str(os.environ["MI_CLIENT_ID"])
+credential = ManagedIdentityCredential(
+    client_id=client_id
+)
+token = credential.get_token("https://database.windows.net/.default").token.encode("UTF-16-LE")
+token_struct = struct.pack(f'<I{len(token)}s', len(token), token)
+SQL_COPT_SS_ACCESS_TOKEN = 1256
+
+conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;Database=public;'
+
+cnxn = pyodbc.connect(conStr, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: token_struct})
 
 def create_database_definition_sqlite(cnxn) -> str:
 
@@ -105,13 +111,15 @@ def create_database_definition_sqlite(cnxn) -> str:
 
     return db_str
 
-#TODO: when connecting to the data lake, get schema (pokemon_public)
-def create_database_definition_sql_server(cnxn) -> str:
+def create_database_definition_sql_server(cnxn, schema) -> str:
 
-    tables_query = """SELECT name from sys.tables;"""
+    tables_query = f"""SELECT 
+                        DISTINCT TABLE_NAME AS name
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = '{schema}';"""
     data_tables = pd.read_sql(tables_query, cnxn)  
 
-    db_str = """"""
+    db_str = f"""Schema: {schema}\n"""
     for name in data_tables.name:
         temp_str = f"""Table: {name}\nColumns: """
         foreign_keys_query = f"""
@@ -175,7 +183,7 @@ def create_database_definition_sql_server(cnxn) -> str:
     return db_str
 
 # description of the available tables 
-data = create_database_definition_sql_server(cnxn)
+data = create_database_definition_sql_server(cnxn, vr.schema)
 
 def log_openai_use(model, messages, response):
     """
@@ -699,7 +707,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     if not previous_sql_messages:     
         messages = [
                     {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
-                    {"role": "user", "content": "Here is a description of the tables within my SQL database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response.}}".format(data, summarisation_description)},
+                    {"role": "user", "content": "Here is a description of the tables within my SQL database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response and don't forget to reference the schema.}}".format(data, summarisation_description)},
                 ]
         
     # otherwise, function has been called before and we want to make improvements
@@ -806,7 +814,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     # if result was more than one row, just return table produced from query
     return SQL_query, sql_query_result, messages, return_type
 
-## page design
+# page design
 
 st.set_page_config(page_title="Rotom Chatbot")
 
@@ -815,7 +823,7 @@ with st.sidebar:
     st.subheader('Your Automatic Analysis Assistant')
     st.image('rotom.png', use_column_width=True)
     st.markdown('''
-    ## About
+    # About
     Rotom can assist you with building data summarisations, tables, and visualisations all about Pokemon. 
     Just say the question! Not sure where to start? Try asking 'How many Pokemon are there?'
     ''')
