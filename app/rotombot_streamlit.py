@@ -49,24 +49,22 @@ deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
 # cnxn = sqlite3.connect(r'/app/data/pokemon.db')
 
 # AZURE SQL SERVER CONNECTION
-sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
-cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                      'Server=tcp:rotom-db-server.database.windows.net,1433;'
-                      'Database=rotom-db;'
-                      'Uid=rotom_container;'
-                      'Pwd='+sql_server_password+';'
-                      'Encrypt=yes;'
-                      'TrustServerCertificate=no;'
-                      'Connection Timeout=240;')
-
-# DATA LAKE TODO: what to do about schema
+# sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
 # cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-#                       'Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;'
-#                       'Database=public;'
-#                       'Authentication=ActiveDirectoryMsi'
+#                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
+#                       'Database=rotom-db;'
+#                       'Uid=rotom_container;'
+#                       'Pwd='+sql_server_password+';'
 #                       'Encrypt=yes;'
 #                       'TrustServerCertificate=no;'
-#                       'Connection Timeout=120;')
+#                       'Connection Timeout=240;')
+
+cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+                      'Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;'
+                      'Database=public;'
+                      'Authentication=ActiveDirectoryMsi;'
+                      'Encrypt=yes;'
+                      'TrustServerCertificate=no;')
 
 def create_database_definition_sqlite(cnxn) -> str:
 
@@ -105,13 +103,15 @@ def create_database_definition_sqlite(cnxn) -> str:
 
     return db_str
 
-#TODO: when connecting to the data lake, get schema (pokemon_public)
-def create_database_definition_sql_server(cnxn) -> str:
+def create_database_definition_sql_server(cnxn, schema) -> str:
 
-    tables_query = """SELECT name from sys.tables;"""
+    tables_query = f"""SELECT 
+                        DISTINCT TABLE_NAME AS name
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = '{schema}';"""
     data_tables = pd.read_sql(tables_query, cnxn)  
 
-    db_str = """"""
+    db_str = f"""Schema: {schema}\n"""
     for name in data_tables.name:
         temp_str = f"""Table: {name}\nColumns: """
         foreign_keys_query = f"""
@@ -175,7 +175,7 @@ def create_database_definition_sql_server(cnxn) -> str:
     return db_str
 
 # description of the available tables 
-data = create_database_definition_sql_server(cnxn)
+data = create_database_definition_sql_server(cnxn, vr.schema)
 
 def log_openai_use(model, messages, response):
     """
@@ -699,7 +699,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     if not previous_sql_messages:     
         messages = [
                     {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
-                    {"role": "user", "content": "Here is a description of the tables within my SQL database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response.}}".format(data, summarisation_description)},
+                    {"role": "user", "content": "Here is a description of the tables within my SQL database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response and don't forget to reference the schema.}}".format(data, summarisation_description)},
                 ]
         
     # otherwise, function has been called before and we want to make improvements

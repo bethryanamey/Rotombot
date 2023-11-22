@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 import pandas as pd
 
+schema = 'pokemon_public'
+
 matching_phrases = {    
     # visualise/show/draw this in a graph
     'visualise': [r'.*[visualise|show|draw|present] this in a graph.*'],
