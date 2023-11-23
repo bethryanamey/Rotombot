@@ -50,7 +50,12 @@ deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
 
 # AZURE SQL SERVER CONNECTION
 # sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
+# sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
 # cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+#                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
+#                       'Database=rotom-db;'
+#                       'Uid=rotom_container;'
+#                       'Pwd='+sql_server_password+';'
 #                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
 #                       'Database=rotom-db;'
 #                       'Uid=rotom_container;'
@@ -112,13 +117,14 @@ def create_database_definition_sqlite(cnxn) -> str:
     return db_str
 
 def create_database_definition_sql_server(cnxn, schema) -> str:
-
+    
     tables_query = f"""SELECT 
                         DISTINCT TABLE_NAME AS name
                     FROM INFORMATION_SCHEMA.COLUMNS
                     WHERE TABLE_SCHEMA = '{schema}';"""
     data_tables = pd.read_sql(tables_query, cnxn)  
 
+    db_str = f"""Schema: {schema}\n"""
     db_str = f"""Schema: {schema}\n"""
     for name in data_tables.name:
         temp_str = f"""Table: {name}\nColumns: """
