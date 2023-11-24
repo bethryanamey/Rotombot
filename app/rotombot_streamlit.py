@@ -50,7 +50,6 @@ deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
 
 # AZURE SQL SERVER CONNECTION
 # sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
-# sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
 # cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
 #                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
 #                       'Database=rotom-db;'
