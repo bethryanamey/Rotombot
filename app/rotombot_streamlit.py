@@ -2,6 +2,8 @@
 import warnings
 warnings.simplefilter(action='ignore', category=UserWarning)
 
+#TODOs in this document
+
 import streamlit as st
 from streamlit_chat import message
 from streamlit_extras.colored_header import colored_header
@@ -10,7 +12,9 @@ import openai
 import os
 import pyodbc
 from azure.identity import ManagedIdentityCredential
+from msal import PublicClientApplication
 import struct
+import sqlite3
 # import sqlite3
 import pandas as pd
 import subprocess
@@ -31,6 +35,19 @@ import hidden_variables as hvr
 #   organization=hvr.beths_organisation,
 # )
 
+#TODO: msal
+#TODO: cache token
+# if 'token' not in st.session_state:
+#     #TODO: generate token    
+#     app = PublicClientApplication(
+#         str(os.getenv("APP_CLIENT_ID")),
+#         authority=f"https://login.microsoftonline.com/{os.getenv('TENANT_ID')}")
+#     result = app.acquire_token_interactive(scopes=["User.Read"])
+#     if "access_token" in result:
+#         print(result["access_token"])
+#     token=None
+#     st.session_state['token'] = token
+
 # AZURE OPENAI CONNECTION
 client = openai.AzureOpenAI(
     api_key=os.getenv("AZURE_OPENAI_KEY"),  
@@ -41,42 +58,60 @@ client = openai.AzureOpenAI(
 deployment_name_4=os.getenv("DEPLOYMENT_NAME_4")
 deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
 
-# LOCAL SQL SERVER DATA CONNECTION (Beth's laptop)
-# cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
-#                trusted_connection='yes')
+def connect_to_data(data_store: str = "data_lake_mi"):
 
-# SQLITE .db FILE CONNECTION
-# cnxn = sqlite3.connect(r'/app/data/pokemon.db')
+    if data_store not in ["local_sql_server", "sqlite", "azure_sql_server", "data_lake_mi"]:
+        raise Exception(f"Can't connect to data. Data store {data_store} is not recognised. Current options available are 'local_sql_server', 'sqlite', 'azure_sql_server', 'data_lake_mi'.")
 
-# AZURE SQL SERVER CONNECTION
-# sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
-# cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-#                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
-#                       'Database=rotom-db;'
-#                       'Uid=rotom_container;'
-#                       'Pwd='+sql_server_password+';'
-#                       'Server=tcp:rotom-db-server.database.windows.net,1433;'
-#                       'Database=rotom-db;'
-#                       'Uid=rotom_container;'
-#                       'Pwd='+sql_server_password+';'
-#                       'Encrypt=yes;'
-#                       'TrustServerCertificate=no;'
-#                       'Connection Timeout=240;')
+    # LOCAL SQL SERVER DATA CONNECTION (Beth's laptop)
+    elif data_store == "local_sql_server":
+        cnxn = pyodbc.connect(driver='{SQL Server}', server=hvr.local_sql_server, database='Playground',               
+                    trusted_connection='yes')
 
-# DATA LAKE CONNECTION (AZURE SYNAPSE)
-# Using a token
-objectid = str(os.environ["MI_OBJECT_ID"])
-client_id = str(os.environ["MI_CLIENT_ID"])
-credential = ManagedIdentityCredential(
-    client_id=client_id
-)
-token = credential.get_token("https://database.windows.net/.default").token.encode("UTF-16-LE")
-token_struct = struct.pack(f'<I{len(token)}s', len(token), token)
-SQL_COPT_SS_ACCESS_TOKEN = 1256
+    # SQLITE .db FILE CONNECTION
+    elif data_store == "sqlite":
+        cnxn = sqlite3.connect(r'/app/data/pokemon.db')
 
-conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;Database=public;'
+    # AZURE SQL SERVER CONNECTION
+    elif data_store == "azure_sql_server":
+        sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
+        cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+                            'Server=tcp:rotom-db-server.database.windows.net,1433;'
+                            'Database=rotom-db;'
+                            'Uid=rotom_container;'
+                            'Pwd='+sql_server_password+';'
+                            'Server=tcp:rotom-db-server.database.windows.net,1433;'
+                            'Database=rotom-db;'
+                            'Uid=rotom_container;'
+                            'Pwd='+sql_server_password+';'
+                            'Encrypt=yes;'
+                            'TrustServerCertificate=no;'
+                            'Connection Timeout=240;')
 
-cnxn = pyodbc.connect(conStr, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: token_struct})
+    # DATA LAKE CONNECTION (AZURE SYNAPSE)
+    # Using a token
+    elif data_store == "data_lake_mi":
+        objectid = str(os.environ["MI_OBJECT_ID"])
+        client_id = str(os.environ["MI_CLIENT_ID"])
+        #TODO: use user's token
+        credential = ManagedIdentityCredential(
+            client_id=client_id
+        )
+        token = credential.get_token("https://database.windows.net/.default").token.encode("UTF-16-LE")
+        token_struct = struct.pack(f'<I{len(token)}s', len(token), token)
+        SQL_COPT_SS_ACCESS_TOKEN = 1256
+
+        # pokemon data -> Database=public
+        # Confirm (temp access) -> Database=bronze-scientist
+        conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;Database=public;'
+
+        cnxn = pyodbc.connect(conStr, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: token_struct})
+
+    # DATA LAKE CONNECTION (Using user's email to authenticate)
+    elif data_store == "data_lake_ia":
+        return
+
+    return cnxn
 
 def create_database_definition_sqlite(cnxn) -> str:
 
@@ -187,8 +222,22 @@ def create_database_definition_sql_server(cnxn, schema) -> str:
 
     return db_str
 
-# description of the available tables 
-data = create_database_definition_sql_server(cnxn, vr.schema)
+def log_conversation(what_do_they_want, graph_df, data_df):
+    """
+    Record state of conversation -> use this to monitor usage and error handling
+    """
+    with open("rotom_usage_log.txt", "a") as myfile:
+        # TODO: include user session id
+        myfile.write("date:"+datetime.now().strftime(format="%d/%m/%Y %H:%M"))
+        myfile.write("\n\n")
+        if what_do_they_want:
+            myfile.write("User requested: "+what_do_they_want)
+            myfile.write("\n\n")
+        myfile.write(str(graph_df))
+        myfile.write("\n\n")
+        myfile.write(str(data_df))
+        myfile.write("\n\n")
+
 
 def log_openai_use(model, messages, response):
     """
@@ -212,8 +261,13 @@ def on_btn_click(graph_df, data_df, what_do_they_want, profanity=False):
     Reset the conversation to start again
     If they were rude, don't let them do anything else
     """
-    del st.session_state.past[:]
-    del st.session_state.generated[:]
+    st.session_state['generated'] = [{'type': 'text', 'data': "Hi! I'm Rotom, your automatic analysis assistant.\nWhat would you like to create? A graph or a data table/summarisation?"}]
+    st.session_state['past'] = ['Hi!']
+    st.session_state.what_do_they_want = vr.what_do_they_want
+    st.session_state.graph_df = vr.graph_df.copy()
+    st.session_state.data_df = vr.data_df.copy()
+    st.session_state.plots = []
+
     if profanity:
         # the end of chatbot
         what_do_they_want = "Nothing"
@@ -302,9 +356,12 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
         visualisation_description = graph_df[graph_df.variable == "visualisation_description"]["input"].iloc[0]
         customisation_options = graph_df[graph_df.variable == "customisation_options"]["input"].iloc[0]
 
-        nth_plot = len(vr.plots)
+        # now using session state instead of variables.py
+        # nth_plot = len(vr.plots)
+        nth_plot = len(st.session_state['plots'])
         response = 'temp_plot{}.png'.format(nth_plot)
-        vr.plots.append(response)
+        # vr.plots.append(response)
+        st.session_state['plots'].append(response)
         return_type = 1
 
         previous_SQL_messages = None
@@ -707,12 +764,29 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     Use plain english texts to automatically create data summarisations
         summarisation_description: str, description of the summarisation the uesr would like to create
     """
+    cnxn = connect_to_data(data_store="data_lake_mi")
+    # description of the available tables 
+    db_description = create_database_definition_sql_server(cnxn, vr.schema)
+
+    #TODO: if we have a select amount of databases/datasets to query, can we include a small bit of context about the tables and how they interact?
+    # We can also include example data queries
+
+    # STATS19
+    db_context = "\nSeveral fields across the accidents, casualty, and vehicle tables include values that are encoded such as local_authority_highway and road_type. Therefore, the value-lookup table is used to convert the encoded values to meaningful content. The lookup table is used by finding the relevant field from the encoded table in the field name column in the lookup, finding the encoded value in the code form column, and then the meaningful value that we need is in the label column."
+    demo_question = "How many accidents happened in Essex between 2016 and 2020 inclusive?"
+    demo_answer = "SELECT COUNT(*) FROM [stats19_public_roadsafety].[accidents] WHERE accident_year BETWEEN 2016 AND 2020 AND local_authority_highway IN (SELECT [code_format] FROM [stats19_public_roadsafety].[value-lookup] vl WHERE vl.[table] = 'Accident' AND vl.field_name = 'local_authority_highway' AND vl.label = 'Essex');"
+
+    db_description = db_description + db_context
 
     # if this is not the first time calling this function, there will be previous_sql_messages to improve upon 
     if not previous_sql_messages:     
         messages = [
                     {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
-                    {"role": "user", "content": "Here is a description of the tables within my SQL database:\n#\n#{}\n#\n### I need a Transact-SQL query to find out {}. Only include the SQL query in your response and don't forget to reference the schema.}}".format(data, summarisation_description)},
+                    {"role": "user", "content": f"I have a question regarding the data in my database that I'd like to convert into a SQL query. Here is a description of the tables within my SQL database:{db_description} I need a Transact-SQL query to find out {demo_question}. Only include the SQL query in your response and don't forget to reference the schema."},
+                    {"role": "assistant", "content": demo_answer},
+                    {"role": "user", "content": "That was exactly what I needed, thank you! Can you help me write the SQL query for another question?"},
+                    {"role": "assistant", "content": "Of course! I'd be happy to help you with another SQL query. Please go ahead and let me know what you're trying to achieve or what specific question you have in mind"},
+                    {"role": "user", "content": f"Here is my next question: '{summarisation_description}'"}
                 ]
         
     # otherwise, function has been called before and we want to make improvements
@@ -776,9 +850,12 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         sql_query_result.to_csv("temp_data.csv", index=False)
         return SQL_query, sql_query_result, messages, gpt_response
 
+    # Reduce the size of a large result
+    if len(sql_query_result) > 20:
+        sql_query_result = sql_query_result[:20].copy()
     # if result only has one row, assume they have asked for an aggregation/looking for a particular object
     # ask ChatGPT if they can phrase the answer in a sentence
-    if len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
+    elif len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
         result_csv = sql_query_result.to_csv(index=False)
 
         user_question = summarisation_description
@@ -835,11 +912,22 @@ with st.sidebar:
     add_vertical_space(2)
     st.write('Made with ❤️ by Beth')
 
+#TODO: add something to the start of the conversation that allows the user to select the schema in the database
+
+# starting session from beginning => initiate chache
 if 'generated' not in st.session_state:
     st.session_state['generated'] = [{'type': 'text', 'data': "Hi! I'm Rotom, your automatic analysis assistant.\nWhat would you like to create? A graph or a data table/summarisation?"}]
 # if the user has never messaged before
 if 'past' not in st.session_state:
     st.session_state['past'] = ['Hi!']
+if 'what_do_they_want' not in st.session_state:
+    st.session_state['what_do_they_want'] = vr.what_do_they_want
+if 'graph_df' not in st.session_state:
+    st.session_state['graph_df'] = vr.graph_df.copy()
+if 'data_df' not in st.session_state:
+    st.session_state['data_df'] = vr.data_df.copy()
+if 'plots' not in st.session_state:
+    st.session_state['plots'] = []
 
 input_container = st.container()
 # a bar below where users enter input
@@ -859,9 +947,14 @@ return_types = {
 
 with response_container:
     if help_needed:
-        response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response(help_needed, vr.what_do_they_want, vr.graph_df, vr.data_df)
-        print("\n\n", vr.data_df, "\n")
-        print("\n\n", vr.graph_df, "\n\n")
+        # updating cache in variables.py
+        # response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response(help_needed, vr.what_do_they_want, vr.graph_df, vr.data_df)
+        # updating cache using session_state
+        response, st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'], return_type = generate_response(help_needed, st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'])
+        print("\n\n", st.session_state['what_do_they_want'], "\n")
+        print("\n", st.session_state['graph_df'], "\n")
+        print("\n", st.session_state['data_df'], "\n\n")
+        log_conversation(st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'])
         st.session_state.past.append(help_needed) 
         return_type_str = return_types[return_type]
         st.session_state.generated.append({'type': return_type_str, 'data': response})
@@ -870,14 +963,18 @@ with response_container:
             # create dummy input to fill gap where we don't need users response
             dummy_input = f'{return_type_str} received.'
             # move onto next step (don't need any input)
-            response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response(dummy_input, vr.what_do_they_want, vr.graph_df, vr.data_df)
+            # updating cache in variables.py
+            # response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response(dummy_input, vr.what_do_they_want, vr.graph_df, vr.data_df)
+            response, st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'], return_type = generate_response(dummy_input, st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'])
             st.session_state.past.append(dummy_input)
 
             # if graph was returned again (this is possible when feedback has been given and we are at the end of the cycle)
             if return_type == 1:
                 st.session_state.generated.append({'type': 'img', 'data': response})
                 # move onto next step (don't need any input)
-                response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response('img received.', vr.what_do_they_want, vr.graph_df, vr.data_df)
+                # updating cache in variables.py
+                # response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response('img received.', vr.what_do_they_want, vr.graph_df, vr.data_df)
+                response, st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'], return_type = generate_response('img received.', st.session_state['what_do_they_want'], st.session_state['graph_df'], st.session_state['data_df'])
                 st.session_state.past.append(dummy_input)
 
             st.session_state.generated.append({'type': 'text', 'data': response})
@@ -896,4 +993,4 @@ with response_container:
                 data = st.session_state["generated"][i]['data']
                 st.table(data)
     
-    #st.button("Clear message", on_click=on_btn_click)
+    st.button("Clear Chat", on_click=on_btn_click, args=(st.session_state['graph_df'], st.session_state['data_df'], st.session_state['what_do_they_want']))

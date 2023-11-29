@@ -1,8 +1,16 @@
 #!/usr/bin/python3
 import pandas as pd
 
-schema = 'pokemon_public'
+# schema for pokemon data in the data lake (in the public database)
+#schema = 'pokemon_public'
+# schema for STATS19 data in data lake
+schema = 'stats19_public_roadsafety'
+# schema for Defra data in data lake
+#schema = "defra_public_ghgdata"
+# schema for pokemon data in SQL Server 
 #schema = 'dbo'
+# schema for confirm data (tab)
+#schema = "confirm_bronze_scientist_trafford"
 
 matching_phrases = {    
     # visualise/show/draw this in a graph
