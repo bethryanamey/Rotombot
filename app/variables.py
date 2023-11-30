@@ -7,7 +7,7 @@ chosen_data_source = 'confirm_data_lake'
 data_connections = {
     # information on pokemon data in data lake
     "pokemon_data_lake":{
-        'fiendly_name':"Pokemon",
+        'friendly_name':"Pokemon",
         'data_store':"data_lake_mi",
         'database':'public',
         'schema':'pokemon_public',
@@ -18,7 +18,7 @@ data_connections = {
 
     # information on STATS19 data in data lake
     "STATS19_data_lake":{
-        'fiendly_name':"STATS19",
+        'friendly_name':"STATS19",
         'data_store':"data_lake_mi",
         'database':'public',
         'schema':'stats19_public_roadsafety',
@@ -29,7 +29,7 @@ data_connections = {
 
     # information on pokemon data in Azure SQL Server
     "pokemon_sql_server":{
-        'fiendly_name':"Pokemon",
+        'friendly_name':"Pokemon",
         'data_store':"azure_sql_server",
         'database':'rotom-db',
         'schema':'dbo',
@@ -40,13 +40,13 @@ data_connections = {
 
     # information on confirm data in data lake (temporary access)
     "confirm_data_lake":{
-        'fiendly_name':"Confirm",
+        'friendly_name':"Confirm",
         'data_store':"data_lake_mi",
         'database':'bronze-scientist',
         'schema':"confirm_bronze_scientist_trafford",
-        'db_context':'',
-        'demo_question':'',
-        'demo_answer':''
+        'db_context':"\nThis database contains information on scheduled, ongoing, and completed work. The jobs table details information about work to be/being completed. Some jobs in the jobs table may have several rows. This is because a new row is added whenever the job is updated (rather than updating the previous row of data). Therefore, to find the latest row of information regarding a job, you need to find the largest currentLogNumber out of all the available rows. This is particularly important if we are querying the frequency of jobs. Dates are strings in the format 'yyyy-mm-ddThh:mm:ss'. Columns with True or False values use strings of the form 'Y' or 'N' respectively. The JobStatusLogs table includes updates on the job (i.e. when the status of a job changed and to what status). The jobStatuses table can be used to convert the meaningless ID of a status to a more meaningful value (joining on code). There are some issues with duplicates in the jobStatuses table so you may need to use aggregates (e.g. MAX) to find a singular value, for example, if we needed the status of one job. The priorities table can be used to decode the priority code in the jobs table and to provide more information on different levels of priority. The centralSites table contains information on the locations of work. The site code in the jobs table joins to the code in the central sites table.",
+        'demo_question':'What is the job status of job with number 777454?',
+        'demo_answer':"SELECT MAX(js.name) AS [jobStatus] FROM [confirm_bronze_scientist_trafford].[jobStatusLogs] jsl INNER JOIN [confirm_bronze_scientist_trafford].[jobStatuses] js ON jsl.statusCode = js.code WHERE jobNumber = '777454.0' AND loggedDate = (SELECT MAX(loggedDate) FROM [confirm_bronze_scientist_trafford].[jobStatusLogs] WHERE jobNumber = '777454.0');"
     }
 }
 

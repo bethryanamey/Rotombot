@@ -852,6 +852,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     # Reduce the size of a large result
     if len(sql_query_result) > 20:
         sql_query_result = sql_query_result[:20].copy()
+    #TODO: if no rows are returned, assume something went wrong
     # if result only has one row, assume they have asked for an aggregation/looking for a particular object
     # ask ChatGPT if they can phrase the answer in a sentence
     elif len(sql_query_result) == 1: # and len(sql_query_result.columns) == 1:
