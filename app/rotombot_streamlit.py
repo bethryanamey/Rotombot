@@ -58,7 +58,14 @@ client = openai.AzureOpenAI(
 deployment_name_4=os.getenv("DEPLOYMENT_NAME_4")
 deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
 
-def connect_to_data(data_store: str = "data_lake_mi"):
+def select_data_source(data_source):
+
+    if data_source in vr.data_connections:
+        return vr.data_connections[data_source]
+    else:
+        raise ValueError(f"Invalid input. Acceptable values are {', '.join(vr.data_connections.keys())}.")
+
+def connect_to_data(data_store: str = "data_lake_mi", database: str = None):
 
     if data_store not in ["local_sql_server", "sqlite", "azure_sql_server", "data_lake_mi"]:
         raise Exception(f"Can't connect to data. Data store {data_store} is not recognised. Current options available are 'local_sql_server', 'sqlite', 'azure_sql_server', 'data_lake_mi'.")
@@ -77,7 +84,7 @@ def connect_to_data(data_store: str = "data_lake_mi"):
         sql_server_password = str(os.environ["SQL_SERVER_PASSWORD"])
         cnxn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
                             'Server=tcp:rotom-db-server.database.windows.net,1433;'
-                            'Database=rotom-db;'
+                            'Database='+database+';'
                             'Uid=rotom_container;'
                             'Pwd='+sql_server_password+';'
                             'Server=tcp:rotom-db-server.database.windows.net,1433;'
@@ -101,9 +108,7 @@ def connect_to_data(data_store: str = "data_lake_mi"):
         token_struct = struct.pack(f'<I{len(token)}s', len(token), token)
         SQL_COPT_SS_ACCESS_TOKEN = 1256
 
-        # pokemon data -> Database=public
-        # Confirm (temp access) -> Database=bronze-scientist
-        conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;Database=public;'
+        conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;Database='+database+';'
 
         cnxn = pyodbc.connect(conStr, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: token_struct})
 
@@ -461,13 +466,13 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
             graph_df = save_previous_content(graph_df, var)
         graph_df.loc[graph_df.stage == 6, "completed"] = True
 
-        if "both" in input_text or ("data" in input_text and "graph" in input_text):                    
+        if "both" in input_text.lower() or ("data" in input_text.lower() and "graph" in input_text.lower()):                    
             response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)
-        elif "data" in input_text:
+        elif "data" in input_text.lower():
             # don't worry about graph
             graph_df.loc[graph_df.variable == "visual_changes", "completed"] = "Skip"
             response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)
-        elif "graph" in input_text:                    
+        elif "graph" in input_text.lower():                    
             # don't worry about data
             graph_df.loc[graph_df.variable == "data_changes", "completed"] = "Skip"
             response, graph_df = retrieve_next_prompt_from_df(graph_df, stage_of_next_step=7)
@@ -764,26 +769,20 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     Use plain english texts to automatically create data summarisations
         summarisation_description: str, description of the summarisation the uesr would like to create
     """
-    cnxn = connect_to_data(data_store="data_lake_mi")
+    # TO CHANGE DATA SOURCE, change vr.chosen_data_source
+    data_source_info = select_data_source(vr.chosen_data_source)
+    cnxn = connect_to_data(data_store=data_source_info['data_store'], database=data_source_info["database"])
     # description of the available tables 
-    db_description = create_database_definition_sql_server(cnxn, vr.schema)
-
-    #TODO: if we have a select amount of databases/datasets to query, can we include a small bit of context about the tables and how they interact?
-    # We can also include example data queries
-
-    # STATS19
-    db_context = "\nSeveral fields across the accidents, casualty, and vehicle tables include values that are encoded such as local_authority_highway and road_type. Therefore, the value-lookup table is used to convert the encoded values to meaningful content. The lookup table is used by finding the relevant field from the encoded table in the field name column in the lookup, finding the encoded value in the code form column, and then the meaningful value that we need is in the label column."
-    demo_question = "How many accidents happened in Essex between 2016 and 2020 inclusive?"
-    demo_answer = "SELECT COUNT(*) FROM [stats19_public_roadsafety].[accidents] WHERE accident_year BETWEEN 2016 AND 2020 AND local_authority_highway IN (SELECT [code_format] FROM [stats19_public_roadsafety].[value-lookup] vl WHERE vl.[table] = 'Accident' AND vl.field_name = 'local_authority_highway' AND vl.label = 'Essex');"
-
-    db_description = db_description + db_context
+    db_description = create_database_definition_sql_server(cnxn, data_source_info["schema"])
+    # add custom context to database description
+    db_description = db_description + data_source_info["db_context"]
 
     # if this is not the first time calling this function, there will be previous_sql_messages to improve upon 
     if not previous_sql_messages:     
         messages = [
                     {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
-                    {"role": "user", "content": f"I have a question regarding the data in my database that I'd like to convert into a SQL query. Here is a description of the tables within my SQL database:{db_description} I need a Transact-SQL query to find out {demo_question}. Only include the SQL query in your response and don't forget to reference the schema."},
-                    {"role": "assistant", "content": demo_answer},
+                    {"role": "user", "content": f"I have a question regarding the data in my database that I'd like to convert into a SQL query. Here is a description of the tables within my SQL database:{db_description} I need a Transact-SQL query to find out {data_source_info['demo_question']}. Only include the SQL query in your response and don't forget to reference the schema."},
+                    {"role": "assistant", "content": data_source_info["demo_answer"]},
                     {"role": "user", "content": "That was exactly what I needed, thank you! Can you help me write the SQL query for another question?"},
                     {"role": "assistant", "content": "Of course! I'd be happy to help you with another SQL query. Please go ahead and let me know what you're trying to achieve or what specific question you have in mind"},
                     {"role": "user", "content": f"Here is my next question: '{summarisation_description}'"}
@@ -916,7 +915,7 @@ with st.sidebar:
 
 # starting session from beginning => initiate chache
 if 'generated' not in st.session_state:
-    st.session_state['generated'] = [{'type': 'text', 'data': "Hi! I'm Rotom, your automatic analysis assistant.\nWhat would you like to create? A graph or a data table/summarisation?"}]
+    st.session_state['generated'] = [{'type': 'text', 'data': f"Hi! I'm Rotom, your automatic analysis assistant. I'm currently connected to the {vr.data_connections[vr.chosen_data_source]['friendly_name']} dataset.\nWhat would you like to create? A graph or a data table/summarisation?"}]
 # if the user has never messaged before
 if 'past' not in st.session_state:
     st.session_state['past'] = ['Hi!']

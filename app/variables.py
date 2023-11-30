@@ -1,16 +1,54 @@
 #!/usr/bin/python3
 import pandas as pd
 
-# schema for pokemon data in the data lake (in the public database)
-#schema = 'pokemon_public'
-# schema for STATS19 data in data lake
-schema = 'stats19_public_roadsafety'
-# schema for Defra data in data lake
-#schema = "defra_public_ghgdata"
-# schema for pokemon data in SQL Server 
-#schema = 'dbo'
-# schema for confirm data (tab)
-#schema = "confirm_bronze_scientist_trafford"
+# change this variable to point to different dataset
+chosen_data_source = 'confirm_data_lake'
+
+data_connections = {
+    # information on pokemon data in data lake
+    "pokemon_data_lake":{
+        'fiendly_name':"Pokemon",
+        'data_store':"data_lake_mi",
+        'database':'public',
+        'schema':'pokemon_public',
+        'db_context':'\n There are two tables that contain information on Pokemon. Types in the pokemon table have been encoded. The meaningful values of the types are in the type_ids table.',
+        'demo_question':'How many water type pokemon are heavier than Pikachu?',
+        'demo_answer':"SELECT COUNT(*) FROM pokemon_public.pokemon WHERE type1_id = (SELECT type_id FROM dbo.type_ids WHERE type = 'Water') AND weight_kg > (SELECT weight_kg FROM dbo.pokemon WHERE name = 'Pikachu');"
+    },
+
+    # information on STATS19 data in data lake
+    "STATS19_data_lake":{
+        'fiendly_name':"STATS19",
+        'data_store':"data_lake_mi",
+        'database':'public',
+        'schema':'stats19_public_roadsafety',
+        'db_context':"\nSeveral fields across the accidents, casualty, and vehicle tables include values that are encoded such as local_authority_highway and road_type. Therefore, the value-lookup table is used to convert the encoded values to meaningful content. The lookup table is used by finding the relevant field from the encoded table in the field name column in the lookup, finding the encoded value in the code form column, and then the meaningful value that we need is in the label column.",
+        'demo_question':"How many accidents happened in Essex between 2016 and 2020 inclusive?",
+        'demo_answer':"SELECT COUNT(*) FROM [stats19_public_roadsafety].[accidents] WHERE accident_year BETWEEN 2016 AND 2020 AND local_authority_highway IN (SELECT [code_format] FROM [stats19_public_roadsafety].[value-lookup] vl WHERE vl.[table] = 'Accident' AND vl.field_name = 'local_authority_highway' AND vl.label = 'Essex');"
+    },
+
+    # information on pokemon data in Azure SQL Server
+    "pokemon_sql_server":{
+        'fiendly_name':"Pokemon",
+        'data_store':"azure_sql_server",
+        'database':'rotom-db',
+        'schema':'dbo',
+        'db_context':'\n There are two tables that contain information on Pokemon. Types in the pokemon table have been encoded. The meaningful values of the types are in the type_ids table.',
+        'demo_question':'How many water type pokemon are heavier than Pikachu?',
+        'demo_answer':"SELECT COUNT(*) FROM dbo.pokemon WHERE type1_id = (SELECT type_id FROM dbo.type_ids WHERE type = 'Water') AND weight_kg > (SELECT weight_kg FROM dbo.pokemon WHERE name = 'Pikachu');"
+    },
+
+    # information on confirm data in data lake (temporary access)
+    "confirm_data_lake":{
+        'fiendly_name':"Confirm",
+        'data_store':"data_lake_mi",
+        'database':'bronze-scientist',
+        'schema':"confirm_bronze_scientist_trafford",
+        'db_context':'',
+        'demo_question':'',
+        'demo_answer':''
+    }
+}
 
 matching_phrases = {    
     # visualise/show/draw this in a graph
