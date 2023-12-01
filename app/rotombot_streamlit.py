@@ -266,7 +266,7 @@ def on_btn_click(graph_df, data_df, what_do_they_want, profanity=False):
     Reset the conversation to start again
     If they were rude, don't let them do anything else
     """
-    st.session_state['generated'] = [{'type': 'text', 'data': "Hi! I'm Rotom, your automatic analysis assistant.\nWhat would you like to create? A graph or a data table/summarisation?"}]
+    st.session_state['generated'] = [{'type': 'text', 'data': f"Hi! I'm Rotom, your automatic analysis assistant. I'm currently connected to the {vr.data_connections[vr.chosen_data_source]['friendly_name']} dataset.\nWhat would you like to create? A graph or a data table/summarisation?"}]
     st.session_state['past'] = ['Hi!']
     st.session_state.what_do_they_want = vr.what_do_they_want
     st.session_state.graph_df = vr.graph_df.copy()
