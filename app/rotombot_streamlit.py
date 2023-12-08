@@ -946,6 +946,7 @@ return_types = {
 }
 
 with response_container:
+    # generate response
     if help_needed:
         # updating cache in variables.py
         # response, vr.what_do_they_want, vr.graph_df, vr.data_df, return_type = generate_response(help_needed, vr.what_do_they_want, vr.graph_df, vr.data_df)
@@ -979,6 +980,7 @@ with response_container:
 
             st.session_state.generated.append({'type': 'text', 'data': response})
 
+    # print
     if st.session_state['generated']:
         for i in range(len(st.session_state['generated'])):
             # print any input from the user that is not a dummy input that we made up to fill in a blank where we don't need the users response
