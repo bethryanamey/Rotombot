@@ -8,7 +8,7 @@ data_connections = {
     # information on pokemon data in data lake
     "pokemon_data_lake":{
         'friendly_name':"Pokemon",
-        'data_store':"data_lake_mi",
+        'data_store':"data_lake_mi_dev",
         'database':'public',
         'schema':'pokemon_public',
         'db_context':'\n There are two tables that contain information on Pokemon. Types in the pokemon table have been encoded. The meaningful values of the types are in the type_ids table.',
@@ -19,7 +19,7 @@ data_connections = {
     # information on STATS19 data in data lake
     "STATS19_data_lake":{
         'friendly_name':"STATS19",
-        'data_store':"data_lake_mi",
+        'data_store':"data_lake_mi_dev",
         'database':'public',
         'schema':'stats19_public_roadsafety',
         'db_context':"\nSeveral fields across the accidents, casualty, and vehicle tables include values that are encoded such as local_authority_highway and road_type. Therefore, the value-lookup table is used to convert the encoded values to meaningful content. The lookup table is used by finding the relevant field from the encoded table in the field name column in the lookup, finding the encoded value in the code form column, and then the meaningful value that we need is in the label column.",
@@ -41,12 +41,23 @@ data_connections = {
     # information on confirm data in data lake (temporary access)
     "confirm_data_lake":{
         'friendly_name':"Confirm",
-        'data_store':"data_lake_mi",
+        'data_store':"data_lake_mi_dev",
         'database':'bronze-scientist',
         'schema':"confirm_bronze_scientist_trafford",
         'db_context':"\nThis database contains information on scheduled, ongoing, and completed work. The jobs table details information about work to be/being completed. Some jobs in the jobs table may have several rows. This is because a new row is added whenever the job is updated (rather than updating the previous row of data). Therefore, to find the latest row of information regarding a job, you need to find the largest currentLogNumber out of all the available rows. This is particularly important if we are querying the frequency of jobs. Dates are strings in the format 'yyyy-mm-ddThh:mm:ss'. Columns with True or False values use strings of the form 'Y' or 'N' respectively. The JobStatusLogs table includes updates on the job (i.e. when the status of a job changed and to what status). The jobStatuses table can be used to convert the meaningless ID of a status to a more meaningful value (joining on code). There are some issues with duplicates in the jobStatuses table so you may need to use aggregates (e.g. MAX) to find a singular value, for example, if we needed the status of one job. The priorities table can be used to decode the priority code in the jobs table and to provide more information on different levels of priority. The centralSites table contains information on the locations of work. The site code in the jobs table joins to the code in the central sites table.",
         'demo_question':'What is the job status of job with number 777454?',
         'demo_answer':"SELECT MAX(js.name) AS [jobStatus] FROM [confirm_bronze_scientist_trafford].[jobStatusLogs] jsl INNER JOIN [confirm_bronze_scientist_trafford].[jobStatuses] js ON jsl.statusCode = js.code WHERE jobNumber = '777454.0' AND loggedDate = (SELECT MAX(loggedDate) FROM [confirm_bronze_scientist_trafford].[jobStatusLogs] WHERE jobNumber = '777454.0');"
+    },
+
+    # information on confirm data in data lake (temporary access)
+    "bmsi_data_lake":{
+        'friendly_name':"BMSI",
+        'data_store':"data_lake_mi_prod",
+        'database':'bmsi-silver',
+        'schema':"bmsi-silver",
+        'db_context':"\nThis database contains information on meter readings at several different sites. Each customer can be responsible for multiple sites. A description of the meter reading is in the HistoryDescription column and the ID columns can be used to link the meter reading type with the site and the time of the reading. The value of the meter reading is in the value column. Information about that value is in the ValueFacets column.",
+        'demo_question':'',
+        'demo_answer':""
     }
 }
 

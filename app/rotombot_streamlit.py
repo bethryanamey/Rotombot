@@ -97,7 +97,7 @@ def connect_to_data(data_store: str = "data_lake_mi", database: str = None):
 
     # DATA LAKE CONNECTION (AZURE SYNAPSE)
     # Using a token
-    elif data_store == "data_lake_mi":
+    elif data_store in ["data_lake_mi_prod", "data_lake_mi_dev"]:
         objectid = str(os.environ["MI_OBJECT_ID"])
         client_id = str(os.environ["MI_CLIENT_ID"])
         #TODO: use user's token
@@ -108,7 +108,12 @@ def connect_to_data(data_store: str = "data_lake_mi", database: str = None):
         token_struct = struct.pack(f'<I{len(token)}s', len(token), token)
         SQL_COPT_SS_ACCESS_TOKEN = 1256
 
-        conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net,1433;Database='+database+';'
+        if data_store == "data_lake_mi_prod":
+            server = 'syn-uks-it-osdl-prod-ondemand.sql.azuresynapse.net'
+        else:
+            server = 'syn-uks-it-osdl-dev-ondemand.sql.azuresynapse.net'
+
+        conStr = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:'+server+',1433;Database='+database+';'
 
         cnxn = pyodbc.connect(conStr, attrs_before={SQL_COPT_SS_ACCESS_TOKEN: token_struct})
 
@@ -752,7 +757,7 @@ def automate_visualisation(
             print("Code didn't work: {}".format(e))
             gpt_response_message = {"role": "assistant", "content":gpt_response}
             messages.append(gpt_response_message)
-            new_message = {"role": "user", "content":"This code didn't work. Please can you try again."}
+            new_message = {"role": "user", "content":f"This code didn't work. I got this error message: {e}. Please can you try again."}
             messages.append(new_message)
             time.sleep(3)
 
@@ -780,7 +785,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     # if this is not the first time calling this function, there will be previous_sql_messages to improve upon 
     if not previous_sql_messages:     
         messages = [
-                    {"role": "system", "content": "You are a helpful, knowledgable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
+                    {"role": "system", "content": "You are a helpful, knowledgeable assistant with a talent for writing SQL code suitable for an Azure SQL database."},
                     {"role": "user", "content": f"I have a question regarding the data in my database that I'd like to convert into a SQL query. Here is a description of the tables within my SQL database:{db_description} I need a Transact-SQL query to find out {data_source_info['demo_question']}. Only include the SQL query in your response and don't forget to reference the schema."},
                     {"role": "assistant", "content": data_source_info["demo_answer"]},
                     {"role": "user", "content": "That was exactly what I needed, thank you! Can you help me write the SQL query for another question?"},
@@ -860,7 +865,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
 
         user_question = summarisation_description
         if data_changes:
-            gpt_input = f"The customer originally asked '{user_question}' but the requested to make the following change to their query: '{data_changes}'. The answer I got is {result_csv} (in CSV format)"
+            gpt_input = f"The customer originally asked '{user_question}' but they requested to make the following change to their query: '{data_changes}'. The answer I got is {result_csv} (in CSV format)"
         else:
             gpt_input = f"The customer asked '{user_question}' and the answer I got is {result_csv} (in CSV format)"
 
