@@ -2,7 +2,7 @@
 import pandas as pd
 
 # change this variable to point to different dataset
-chosen_data_source = 'confirm_data_lake'
+chosen_data_source = 'aliens_sql_server'
 
 data_connections = {
     # information on pokemon data in data lake
@@ -58,7 +58,18 @@ data_connections = {
         'db_context':"\nThis database contains information on meter readings at several different sites. Each customer can be responsible for multiple sites. A description of the meter reading is in the HistoryDescription column and the ID columns can be used to link the meter reading type with the site and the time of the reading. The value of the meter reading is in the value column. Information about that value is in the ValueFacets column.",
         'demo_question':'',
         'demo_answer':""
-    }
+    },
+
+    # information on pokemon data in Azure SQL Server
+    "aliens_sql_server":{
+        'friendly_name':"Alien Sightings",
+        'data_store':"azure_sql_server",
+        'database':'rotom-db',
+        'schema':'aliens',
+        'db_context':'\nThis schema includes one table on alien sightings throughout history. The datetime column is the date and time of the reported incident. The city column has human-written text stating the location of the incident. Country should be prioritised for location. Duration in seconds states how long an incident lasted and should be used over any other duration columns.',
+        'demo_question':'How many alien sightings have been reported since 2010 in the United Kingdom and in the USA combined?',
+        'demo_answer':"SELECT COUNT(*) FROM aliens.alien_sightings WHERE (country = 'United Kingdom' OR country = 'USA') AND YEAR(datetime) >= 2010;"
+    },
 }
 
 matching_phrases = {    

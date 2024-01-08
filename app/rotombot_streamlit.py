@@ -806,7 +806,7 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
     while not working:
 
         model = "gpt-4"        
-        # send request to OpenAI for python code to plot visual
+        # send request to OpenAI for SQL code
         response = client.chat.completions.create(
             # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-4" (variable a few lines above)
             model=deployment_name_4,
