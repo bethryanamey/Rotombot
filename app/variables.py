@@ -32,7 +32,7 @@ data_connections = {
         'friendly_name':"Pokemon",
         'data_store':"azure_sql_server",
         'database':'rotom-db',
-        'schema':'dbo',
+        'schema':'pokemon',
         'db_context':'\n There are two tables that contain information on Pokemon. Types in the pokemon table have been encoded. The meaningful values of the types are in the type_ids table.',
         'demo_question':'How many water type pokemon are heavier than Pikachu?',
         'demo_answer':"SELECT COUNT(*) FROM dbo.pokemon WHERE type1_id = (SELECT type_id FROM dbo.type_ids WHERE type = 'Water') AND weight_kg > (SELECT weight_kg FROM dbo.pokemon WHERE name = 'Pikachu');"

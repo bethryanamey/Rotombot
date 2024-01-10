@@ -123,6 +123,28 @@ def connect_to_data(data_store: str = "data_lake_mi", database: str = None):
 
     return cnxn
 
+#TODO: use list of schemas to allow user to pick which dataset to use
+# Ideally, this should cross check with all dataset option in the dictionary in the variables file
+def find_schema_options(cnxn) -> list:
+    """
+    Display choice of schemas for use to choose (mainly for Azure SQL Server with test datasets)
+    """
+    schemas_query = """
+    select s.name as schema_name, 
+        s.schema_id,
+        u.name as schema_owner
+    from sys.schemas s
+    inner join sys.sysusers u
+        on u.uid = s.principal_id
+    where u.name = 'dbo'
+        and s.name != 'dbo'
+    order by s.name"""
+    schemas = pd.read_sql(schemas_query, cnxn)
+
+    schema_options =  list(schemas.schema_name.unique())
+
+    return schema_options
+
 def create_database_definition_sqlite(cnxn) -> str:
 
     tables_query = "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
