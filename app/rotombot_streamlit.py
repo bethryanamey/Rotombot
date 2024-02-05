@@ -460,7 +460,7 @@ def handle_graph_generation(input_text: str, graph_df: pd.DataFrame):
         elif "yes" in input_text.lower():
             SQL_query = graph_df[graph_df.variable == "SQL_query"]["input"].iloc[0]
             plotting_code = graph_df[graph_df.variable == "plotting_code"]["input"].iloc[0]
-            response = "SQL Query:\n{}\n\nPython Plotting Code:\n{}".format(SQL_query, plotting_code)
+            response = "{}#[GAP]#{}".format(SQL_query, plotting_code)
             return_type = 2
             graph_df.loc[graph_df.variable == "show_work", "input"] = input_text
         # user doesn't want to know, do nothing 
@@ -559,7 +559,9 @@ def handle_data_conversation(input_text: str, data_df: pd.DataFrame, graph_df: p
     # user has made previous request, result has been generated and they want to see how
     elif match_reply(input_text, vr.matching_phrases) == 'code' and all(data_df[data_df.stage == 2]["completed"] == True):
         SQL_query = data_df[data_df.variable == "SQL_query"]["input"].iloc[0]
-        response = "Here is the SQL Query used to generate the result:\n{}".format(SQL_query)
+        # response = "// Here is the SQL Query used to generate the result:\n{}".format(SQL_query)
+        response = SQL_query
+        return_type = 4
 
     # user has made previous request, result has been generated and they are not happy with it
     elif match_reply(input_text, vr.matching_phrases) == 'problem' and all(data_df[data_df.stage == 2]["completed"] == True):
@@ -969,6 +971,7 @@ return_types = {
     1:"img",
     2:"code",
     3:"table",
+    4:"data_code",
     -1:"break"
 }
 
@@ -1007,14 +1010,24 @@ with response_container:
 
             st.session_state.generated.append({'type': 'text', 'data': response})
 
-    # print
+        # print previous chat
     if st.session_state['generated']:
         for i in range(len(st.session_state['generated'])):
             # print any input from the user that is not a dummy input that we made up to fill in a blank where we don't need the users response
             if st.session_state['past'][i][-10:] != " received.":
                 message(st.session_state['past'][i], is_user=True, key=str(i) + '_user', avatar_style="thumbs", seed=2225)
-            if st.session_state["generated"][i]['type'] in ["text", "code"]:
+            if st.session_state["generated"][i]['type'] == 'text':
                 message(st.session_state["generated"][i]['data'], key=str(i), avatar_style="thumbs", seed=18)
+            # code for data table and graph
+            elif st.session_state["generated"][i]['type'] == "code":
+                sql, python = st.session_state["generated"][i]['data'].split('#[GAP]#')
+                message('Here is the SQL query used to extract the data and the Python code used to generate the graph:', key=str(i), avatar_style="thumbs", seed=18)
+                st.code(sql.strip(), language='sql')
+                st.code(python.strip(), language='python')
+            # code generated to create data table/summarisation
+            elif st.session_state["generated"][i]['type'] == "data_code":
+                message('Here is the SQL query used to generate the result:', key=str(i), avatar_style="thumbs", seed=18)
+                st.code(st.session_state["generated"][i]['data'], language='sql')
             elif st.session_state["generated"][i]['type'] == "img":
                 image = Image.open(st.session_state["generated"][i]['data'])
                 st.image(image)
