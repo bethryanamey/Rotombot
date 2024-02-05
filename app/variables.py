@@ -2,7 +2,7 @@
 import pandas as pd
 
 # change this variable to point to different dataset
-chosen_data_source = 'aliens_sql_server'
+chosen_data_source = 'pokemon_sql_server'
 
 data_connections = {
     # information on pokemon data in data lake
@@ -35,7 +35,7 @@ data_connections = {
         'schema':'pokemon',
         'db_context':'\n There are two tables that contain information on Pokemon. Types in the pokemon table have been encoded. The meaningful values of the types are in the type_ids table.',
         'demo_question':'How many water type pokemon are heavier than Pikachu?',
-        'demo_answer':"SELECT COUNT(*) FROM dbo.pokemon WHERE type1_id = (SELECT type_id FROM dbo.type_ids WHERE type = 'Water') AND weight_kg > (SELECT weight_kg FROM dbo.pokemon WHERE name = 'Pikachu');"
+        'demo_answer':"SELECT COUNT(*) FROM pokemon.pokemon WHERE type1_id = (SELECT type_id FROM pokemon.type_ids WHERE type = 'Water') AND weight_kg > (SELECT weight_kg FROM pokemon.pokemon WHERE name = 'Pikachu');"
     },
 
     # information on confirm data in data lake (temporary access)

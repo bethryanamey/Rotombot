@@ -1022,4 +1022,4 @@ with response_container:
                 data = st.session_state["generated"][i]['data']
                 st.table(data)
     
-    st.button("Clear Chat", on_click=on_btn_click, args=(st.session_state['graph_df'], st.session_state['data_df'], st.session_state['what_do_they_want']))
+    st.button("Clear Chat", on_click=on_btn_click, args=(st.session_state['graph_df'], st.session_state['data_df'], st.session_state['what_do_they_want'])) 
