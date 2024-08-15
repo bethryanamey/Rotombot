@@ -3,6 +3,8 @@ import warnings
 warnings.simplefilter(action='ignore', category=UserWarning)
 
 #TODOs in this document
+# This file uses environment variables
+# These can be found under environment variables in the azure web app APP-ROTOM-POC-UKS-001
 
 import streamlit as st
 from streamlit_chat import message
