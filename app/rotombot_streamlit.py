@@ -33,9 +33,9 @@ import hidden_variables as hvr
 # BETH'S OPENAI CONNECTION
 # key for using OpenAI (this is how they charge you)
 # API key is an environment variable that doesn't need to be mentioned
-# client = openai.OpenAI(
-#   organization=hvr.beths_organisation,
-# )
+client = openai.OpenAI(
+  organization=hvr.beths_organisation,
+)
 
 #TODO: msal
 #TODO: cache token
@@ -51,11 +51,11 @@ import hidden_variables as hvr
 #     st.session_state['token'] = token
 
 # AZURE OPENAI CONNECTION
-client = openai.AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_KEY"),  
-    api_version="2023-10-01-preview",
-    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    )
+# client = openai.AzureOpenAI(
+#     api_key=os.getenv("AZURE_OPENAI_KEY"),  
+#     api_version="2023-10-01-preview",
+#     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+#     )
 
 deployment_name_4=os.getenv("DEPLOYMENT_NAME_4")
 deployment_name_35=os.getenv("DEPLOYMENT_NAME_35")
@@ -752,7 +752,8 @@ def automate_visualisation(
         # send request to OpenAI for python code to plot visual
         response = client.chat.completions.create(
             # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-3.5-turbo-16k" (variable a few lines above)
-            model=deployment_name_35,
+            # when using Azure deployed model, need to reference name of deployed model
+            model=model,#deployment_name_35,
             messages=messages
         )
         # log usage
@@ -835,7 +836,8 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         # send request to OpenAI for SQL code
         response = client.chat.completions.create(
             # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-4" (variable a few lines above)
-            model=deployment_name_4,
+            # when using Azure deployed model, need to reference name of deployed model
+            model=model,#deployment_name_4,
             messages=messages
         )
         # log usage
@@ -911,7 +913,8 @@ def automate_summarisation(summarisation_description: str, data_for_graph: bool 
         # send request to OpenAI for python code to plot visual
         response = client.chat.completions.create(
             # when using Beth's API, need to mention model type rather than deployed model e.g. "gpt-3.5-turbo" (variable a few lines above)
-            model=deployment_name_35,
+            # when using Azure deployed model, need to reference name of deployed model
+            model=model,#deployment_name_35,
             messages=sentence_messages
         )
         #log usage

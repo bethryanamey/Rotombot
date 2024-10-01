@@ -10,3 +10,4 @@ app/.env
 compose.yaml
 app/openai_log.txt
 .gitignore
+.env
